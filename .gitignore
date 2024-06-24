@@ -170,3 +170,6 @@ debug_*
 .vscode
 
 linux*
+
+
+*.make

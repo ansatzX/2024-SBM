@@ -32,7 +32,7 @@ if __name__ == '__main__':
     omega_c_reno  = omega_c * Omega
     # parm translate
     s_reno = s
-    alpha_reno = 4*alpha # 
+    alpha_reno = 4*alpha # tranlate from wang1 to PRL
 
     # set log
     logger = package_logger
@@ -121,10 +121,10 @@ if __name__ == '__main__':
     ttns.evolve_config = EvolveConfig(EvolveMethod.tdvp_ps)
     # old settings
     # nsteps = args.nsteps # was 200
-    dt = 0.1*Omega
+    # 
+    simulation_time = 10 * Omega
+    dt = simulation_time/nsteps # nsteps * step_dt = Omegat * sumtime
     expectations = []
-
-
 
     for i in range(nsteps):
         logger.info(f'proceeding step {i}')
