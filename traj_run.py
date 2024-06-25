@@ -122,8 +122,9 @@ if __name__ == '__main__':
     # old settings
     # nsteps = args.nsteps # was 200
     # 
-    simulation_time = 10 * Omega
-    dt = simulation_time/nsteps # nsteps * step_dt = Omegat * sumtime
+    # simulation_time = 10 * Omega
+    dt = 0.1/Omega # 
+    
     expectations = []
 
     for i in range(nsteps):
