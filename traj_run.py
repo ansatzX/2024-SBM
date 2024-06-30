@@ -22,11 +22,16 @@ if __name__ == '__main__':
     parser.add_argument("--omega_c", help="sbm \omega_c * \Omega", type=float)
     parser.add_argument("--nsteps", help="tdvp step", type=int)
     parser.add_argument("--omega", help="sbm \Omega tunnelling spliting", type=float)
+    parser.add_argument("--nmodes", help="sbm env modes", type=int)
+    parser.add_argument("--bond_dims", help="mps/tns bond dim", type=int)
     args = parser.parse_args()
     s = args.s
     alpha = args.alpha
     omega_c  = args.omega_c
     nsteps = args.nsteps # was 200
+
+    nmodes = args.nmodes
+    bond_dims = args.bond_dims
     
     Omega = args.omega
     omega_c_reno  = omega_c * Omega
@@ -44,8 +49,8 @@ if __name__ == '__main__':
     log.register_file_output(os.path.join(dump_dir, f'{job_name}.log'), mode="w")
 
     # use old settings from example
-    nmodes = 1000
-    Ms = 20
+    # nmodes = 1000
+    Ms = bond_dims
     upper_limit = 30
 
     Delta = Omega * 0.5
