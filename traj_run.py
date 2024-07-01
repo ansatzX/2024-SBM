@@ -42,7 +42,7 @@ if __name__ == '__main__':
     # set log
     logger = package_logger
 
-    job_name = f"traj_s{s:.2f}_alpha{alpha:.2f}_Omega{Omega:.2f}_omega_c{omega_c:.2f}"  ####################
+    job_name = f"traj_s{s:.2f}_alpha{alpha:.2f}_Omega{Omega:.2f}_omega_c{omega_c:.2f}_nmodes{nmodes}_bond_dims{bond_dims}"  ####################
 
     dump_dir = job_name
     os.makedirs(job_name, exist_ok=True)
