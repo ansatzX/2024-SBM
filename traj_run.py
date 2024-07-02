@@ -24,6 +24,7 @@ if __name__ == '__main__':
     parser.add_argument("--omega", help="sbm \Omega tunnelling spliting", type=float)
     parser.add_argument("--nmodes", help="sbm env modes", type=int)
     parser.add_argument("--bond_dims", help="mps/tns bond dim", type=int)
+    parser.add_argument("--td_method", help="0: tdvp_ps, 1: tdvp_ps2, 3: tdvp_vmf, 4: prop_and_compress_tdrk4", type=int)
     args = parser.parse_args()
     s = args.s
     alpha = args.alpha
@@ -35,6 +36,8 @@ if __name__ == '__main__':
     
     Omega = args.omega
     omega_c_reno  = omega_c * Omega
+
+    td_method = args.td_method
     # parm translate
     s_reno = s
     alpha_reno = 4*alpha # tranlate from wang1 to PRL
@@ -123,7 +126,30 @@ if __name__ == '__main__':
     logger.info(ttns.bond_dims)
     logger.info(ttno.bond_dims)
     logger.info(len(ttns))
-    ttns.evolve_config = EvolveConfig(EvolveMethod.tdvp_ps)
+
+    # py310 only 
+    # match td_method:
+    #     case 0: 
+    #         ttns.evolve_config = EvolveConfig(EvolveMethod.tdvp_ps)
+    #     case 1:
+    #         ttns.evolve_config = EvolveConfig(EvolveMethod.tdvp_ps2)
+    #     case 2:
+    #         ttns.evolve_config = EvolveConfig(EvolveMethod.tdvp_vmf)
+    #     case 3:
+    #         ttns.evolve_config = EvolveConfig(EvolveMethod.prop_and_compress_tdrk4)
+    #     case _:
+    #         ttns.evolve_config = EvolveConfig(EvolveMethod.prop_and_compress_tdrk4)
+    if td_method == 0:
+        ttns.evolve_config = EvolveConfig(EvolveMethod.tdvp_ps)
+    elif td_method == 1:
+        ttns.evolve_config = EvolveConfig(EvolveMethod.tdvp_ps2)
+    elif td_method == 2:
+        ttns.evolve_config = EvolveConfig(EvolveMethod.tdvp_vmf)
+    elif td_method == 3:
+        ttns.evolve_config = EvolveConfig(EvolveMethod.prop_and_compress_tdrk4)
+    else :
+        ttns.evolve_config = EvolveConfig(EvolveMethod.tdvp_ps)
+
     # old settings
     # nsteps = args.nsteps # was 200
     # 
@@ -149,5 +175,5 @@ if __name__ == '__main__':
             f.write(f'{inf}  {expectations[inf]} \n')
     with open(os.path.join(dump_dir, f'{job_name}_1-p_baselog10.xvg'), 'w') as f:
         for inf in range(len(expectations)):
-            f.write(f'{inf}  {-np.log10(1-expectations[inf])} \n')
+            f.write(f'{inf}  {np.log10(1-expectations[inf])} \n')
             
