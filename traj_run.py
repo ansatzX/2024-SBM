@@ -1,3 +1,4 @@
+from typing import List, Dict, Tuple, Union, Callable, Any
 from ctypes import set_errno
 import sys
 import os
@@ -19,12 +20,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--s", help="sbm s", type=float)
     parser.add_argument("--alpha", help="sbm \alpha coupling", type=float)
-    parser.add_argument("--omega_c", help="sbm \omega_c * \Omega", type=float)
-    parser.add_argument("--nsteps", help="tdvp step", type=int)
-    parser.add_argument("--omega", help="sbm \Omega tunnelling spliting", type=float)
-    parser.add_argument("--nmodes", help="sbm env modes", type=int)
-    parser.add_argument("--bond_dims", help="mps/tns bond dim", type=int)
-    parser.add_argument("--td_method", help="0: tdvp_ps, 1: tdvp_ps2, 3: tdvp_vmf, 4: prop_and_compress_tdrk4", type=int)
+    parser.add_argument("--omega_c", default=10,help="sbm \omega_c * \Omega", type=int)
+    parser.add_argument("--omega", default=1,help="sbm \Omega tunnelling spliting", type=int)
+
+    parser.add_argument("--nsteps", default=100, help="tdvp step", type=int)
+    parser.add_argument("--nmodes",  default=1000,help="sbm env modes", type=int)
+    parser.add_argument("--bond_dims", default=20, help="mps/tns bond dim", type=int)
+    parser.add_argument("--td_method", default=0, help="0: tdvp_ps, 1: tdvp_ps2, 3: tdvp_vmf, 4: prop_and_compress_tdrk4", type=int)
+
+
+
     args = parser.parse_args()
     s = args.s
     alpha = args.alpha
@@ -45,7 +50,7 @@ if __name__ == '__main__':
     # set log
     logger = package_logger
 
-    job_name = f"traj_s{s:.2f}_alpha{alpha:.2f}_Omega{Omega:.2f}_omega_c{omega_c:.2f}_nmodes{nmodes}_bond_dims{bond_dims}"  ####################
+    job_name = f"traj_s{s:.2f}_alpha{alpha:.2f}_Omega{Omega}_omega_c{omega_c}_nmodes{nmodes}_bond_dims{bond_dims}_td_method_{td_method}"  ####################
 
     dump_dir = job_name
     os.makedirs(job_name, exist_ok=True)
@@ -156,8 +161,9 @@ if __name__ == '__main__':
     # simulation_time = 10 * Omega
     dt = 0.1/Omega # 
     
-    expectations = []
-
+    expectations: list = []
+    entropy_1sites_traj: List[list] = []
+    logger.info(ttns.basis.dof_list)
     for i in range(nsteps):
         logger.info(f'proceeding step {i}')
         ttns = ttns.evolve(ttno, dt)
@@ -165,15 +171,28 @@ if __name__ == '__main__':
             dump_file = os.path.join(dump_dir, f'{job_name}_last_step_ttns.npz')
             ttns.dump(dump_file)
         z = ttns.expectation(exp_z)
+        entropy_1sites = []
+        for dof in ttns.basis.dof_list:
+            entropy_1site: Any = ttns.calc_1dof_entropy(dof)
+            # ttns.calc_2dof_entropy()
+            entropy_1sites.append(entropy_1sites)
         expectations.append(z)
-        
+        entropy_1sites_traj.append(entropy_1sites)
         logger.info(z)
+        logger.info(entropy_1sites)
 
     logger.info(expectations)
     with open(os.path.join(dump_dir, f'{job_name}_p.xvg'), 'w') as f:
         for inf in range(len(expectations)):
             f.write(f'{inf}  {expectations[inf]} \n')
+    
     with open(os.path.join(dump_dir, f'{job_name}_1-p_baselog10.xvg'), 'w') as f:
         for inf in range(len(expectations)):
             f.write(f'{inf}  {np.log10(1-expectations[inf])} \n')
-            
+
+    with open(os.path.join(dump_dir, f'{job_name}_entropy_1sites.xvg'), 'w') as f:
+        for inf in range(len(entropy_1sites_traj)):
+            f.write(f'{inf} ')
+            for i_site in range(len(ttns.basis.dof_list)):
+                f.write(f'{entropy_1sites_traj[inf][i_site]} ')
+            f.write(f' \n')
