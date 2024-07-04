@@ -12,7 +12,7 @@ from renormalizer.tn import BasisTree, TTNO, TTNS, TreeNodeBasis
 import argparse
 import numpy as np
 from renormalizer.utils.log import package_logger
-# import pickle
+import pickle
 
 if __name__ == '__main__':
     # argpaser
@@ -27,6 +27,7 @@ if __name__ == '__main__':
     parser.add_argument("--nmodes",  default=1000,help="sbm env modes", type=int)
     parser.add_argument("--bond_dims", default=20, help="mps/tns bond dim", type=int)
     parser.add_argument("--td_method", default=0, help="0: tdvp_ps, 1: tdvp_ps2, 3: tdvp_vmf, 4: prop_and_compress_tdrk4", type=int)
+    parser.add_argument("--store_all", default=0, help="0: n, 1: y", type=int)
 
 
 
@@ -43,6 +44,7 @@ if __name__ == '__main__':
     omega_c_reno  = omega_c * Omega
 
     td_method = args.td_method
+    store_all = args.store_all
     # parm translate
     s_reno = s
     alpha_reno = 4*alpha # tranlate from wang1 to PRL
@@ -103,11 +105,13 @@ if __name__ == '__main__':
     # set basis
     nbas = np.max([16 * c2/w**3, np.ones(nmodes)*4], axis=0)
     nbas = np.round(nbas).astype(int)
-    logger.info(nbas)
+    
     basis = [ba.BasisHalfSpin("spin",[0,0])]
+    logger.info(f'HalfSpin dof: spin')
+    logger.info(f'SHO dof: v_imode')
     for imode in range(nmodes):
         basis.append(ba.BasisSHO(f"v_{imode}", w[imode], int(nbas[imode])))
-
+    logger.info(f'SHO nbas: {nbas.tolist()}')
 
     tree_order = 2
     basis_vib = basis[1:]
@@ -128,9 +132,9 @@ if __name__ == '__main__':
     ttns = TTNS(basis_tree)
     ttns.compress_config = CompressConfig(CompressCriteria.fixed, max_bonddim=Ms)
     ttns = expand_bond_dimension_general(ttns, ttno, ex_mps=None)
-    logger.info(ttns.bond_dims)
-    logger.info(ttno.bond_dims)
-    logger.info(len(ttns))
+    logger.info(f'ttns.bond_dims: {ttns.bond_dims}')
+    logger.info(f'ttno.bond_dims: {ttno.bond_dims}')
+    logger.info(f'ttns_length: {len(ttns)}')
 
     # py310 only 
     # match td_method:
@@ -154,34 +158,54 @@ if __name__ == '__main__':
         ttns.evolve_config = EvolveConfig(EvolveMethod.prop_and_compress_tdrk4)
     else :
         ttns.evolve_config = EvolveConfig(EvolveMethod.tdvp_ps)
-
+    logger.info(f'ttns.evolve_config: {ttns.evolve_config}')
     # old settings
     # nsteps = args.nsteps # was 200
     # 
     # simulation_time = 10 * Omega
-    dt = 0.1/Omega # 
-    
-    expectations: list = []
-    entropy_1sites_traj: List[list] = []
+    dt: float = 0.1/Omega # 
+    logger.info(f'dt: {dt}')
+    expectations: List[Union[float, complex]] = []
+    entropy_1sites_traj: List[Dict[Union[int, List], float]] = []
+    logger.info("ttns.basis.dof_list")
     logger.info(ttns.basis.dof_list)
+    logger.info("ttns.basis.dof2idx")
+    logger.info(ttns.basis.dof2idx)
     for i in range(nsteps):
         logger.info(f'proceeding step {i}')
         ttns = ttns.evolve(ttno, dt)
-        if i == nsteps-1:
-            dump_file = os.path.join(dump_dir, f'{job_name}_last_step_ttns.npz')
+        if store_all:
+            dump_file = os.path.join(dump_dir, f'{job_name}_{i}_step_ttns.npz')
             ttns.dump(dump_file)
-        z = ttns.expectation(exp_z)
-        entropy_1sites = []
-        for dof in ttns.basis.dof_list:
-            entropy_1site: Any = ttns.calc_1dof_entropy(dof)
-            # ttns.calc_2dof_entropy()
-            entropy_1sites.append(entropy_1sites)
+        else:
+            if i == nsteps-1:
+                dump_file = os.path.join(dump_dir, f'{job_name}_last_step_ttns.npz')
+                ttns.dump(dump_file)
+        # prop calc
+        z: Union[float, complex] = ttns.expectation(exp_z)
+        # entropy_1sites = []
+        # for dof in ttns.basis.dof_list:
+        #     entropy_1site: Any = ttns.calc_1dof_entropy(dof)
+        #     # ttns.calc_2dof_entropy()
+        #     entropy_1sites.append(entropy_1sites)        
+        entropy_1sites: Dict[Union[int, List], float] = ttns.calc_1dof_entropy()
+        #
+        with open(os.path.join(dump_dir, f'{job_name}_{i}_step_entropy_1sites.pickle'), 'wb') as f:
+            pickle.dump(entropy_1sites, f)
+
         expectations.append(z)
         entropy_1sites_traj.append(entropy_1sites)
-        logger.info(z)
-        logger.info(entropy_1sites)
 
+        logger.info(f'step {i} z: {z}')
+        logger.info(f'step {i} entropy_1sites: {entropy_1sites}')
+
+    with open(os.path.join(dump_dir, f'{job_name}_expectations.pickle'), 'wb') as f:
+        pickle.dump(expectations, f)
+    with open(os.path.join(dump_dir, f'{job_name}_entropy_1sites_traj.pickle'), 'wb') as f:
+        pickle.dump(entropy_1sites_traj, f)
+    logger.info('expectations')
     logger.info(expectations)
+
     with open(os.path.join(dump_dir, f'{job_name}_p.xvg'), 'w') as f:
         for inf in range(len(expectations)):
             f.write(f'{inf}  {expectations[inf]} \n')
@@ -191,8 +215,13 @@ if __name__ == '__main__':
             f.write(f'{inf}  {np.log10(1-expectations[inf])} \n')
 
     with open(os.path.join(dump_dir, f'{job_name}_entropy_1sites.xvg'), 'w') as f:
+        f.write(f"@ title 's{s:.2f}_alpha{alpha:.2f}' \n")
+        idxs = sorted(list(ttns.basis.dof2idx.values()))
+        for i in range(len(ttns.basis.dof2idx)):
+            f.write(f"@ s{i} legend 's{s:.2f}_alpha{alpha:.2f}_dof_{idxs[i]}' \n")
+
         for inf in range(len(entropy_1sites_traj)):
             f.write(f'{inf} ')
-            for i_site in range(len(ttns.basis.dof_list)):
-                f.write(f'{entropy_1sites_traj[inf][i_site]} ')
+            for dof_idx in idxs:
+                f.write(f'{entropy_1sites_traj[inf][dof_idx]} ')
             f.write(f' \n')
