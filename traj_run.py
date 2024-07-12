@@ -28,6 +28,8 @@ if __name__ == '__main__':
     parser.add_argument("--bond_dims", default=20, help="mps/tns bond dim", type=int)
     parser.add_argument("--td_method", default=0, help="0: tdvp_ps, 1: tdvp_ps2, 3: tdvp_vmf, 4: prop_and_compress_tdrk4", type=int)
     parser.add_argument("--store_all", default=0, help="0: n, 1: y", type=int)
+    parser.add_argument("--calc_1sites_entropy", default=0, help="0: n, 1: y", type=int)
+    parser.add_argument("--calc_mutual_info", default=0, help="0: n, 1: y", type=int)
 
 
 
@@ -45,6 +47,8 @@ if __name__ == '__main__':
 
     td_method = args.td_method
     store_all = args.store_all
+    is_calc_1sites_entropy = args.calc_1sites_entropy
+    is_calc_mutual_info = args.calc_mutual_info
     # parm translate
     s_reno = s
     alpha_reno = 4*alpha # tranlate from wang1 to PRL
@@ -61,7 +65,7 @@ if __name__ == '__main__':
     # use old settings from example
     # nmodes = 1000
     Ms = bond_dims
-    upper_limit = 30
+    # upper_limit = 30
 
     Delta = Omega * 0.5
     eps = 0
@@ -74,7 +78,8 @@ if __name__ == '__main__':
     c = np.sqrt(c2)
     logger.info(f"w:{w}")
     logger.info(f"c:{c}")
-
+    with open(os.path.join(dump_dir, f'sdf_wang1_omega.pickle'), 'wb') as f:
+        pickle.dump(w, f)
     # reno ?
     reno = sdf.reno(w[-1])
     logger.info(f"renormalization constant: {reno}")
@@ -167,6 +172,7 @@ if __name__ == '__main__':
     logger.info(f'dt: {dt}')
     expectations: List[Union[float, complex]] = []
     entropy_1sites_traj: List[Dict[Union[int, List], float]] = []
+    mutual_info_traj =[]
     logger.info("ttns.basis.dof_list")
     logger.info(ttns.basis.dof_list)
     logger.info("ttns.basis.dof2idx")
@@ -187,21 +193,39 @@ if __name__ == '__main__':
         # for dof in ttns.basis.dof_list:
         #     entropy_1site: Any = ttns.calc_1dof_entropy(dof)
         #     # ttns.calc_2dof_entropy()
-        #     entropy_1sites.append(entropy_1sites)        
-        entropy_1sites: Dict[Union[int, List], float] = ttns.calc_1dof_entropy()
-        #
-        with open(os.path.join(dump_dir, f'{job_name}_{i}_step_entropy_1sites.pickle'), 'wb') as f:
-            pickle.dump(entropy_1sites, f)
+        #     entropy_1sites.append(entropy_1sites)     
+        if is_calc_1sites_entropy  : 
+            dofs = [f'v_{i}' for i in range(nmodes) ]
+            dofs.append('spin')
+            logger.info(f'dofs:, {dofs}')
+            entropy_1sites: Dict[Union[int, List], float] = ttns.calc_1dof_entropy(dofs)
+
+            with open(os.path.join(dump_dir, f'{i:04}_step_entropy_1site.pickle'), 'wb') as f:
+                pickle.dump(entropy_1sites, f)
+            entropy_1sites_traj.append(entropy_1sites)
+            logger.info(f'step {i} entropy_1sites: {entropy_1sites}')
+
+        if is_calc_mutual_info:
+            # mutual_infos = {}
+            # entropy_ts = {}
+            dof1 ='spin'
+            dofs = [(dof1, f'v_{i}')for i in range(100)]
+            rdm_2dof = ttns.calc_2dof_rdm(dofs)
+            mutual_infos, entropy_tuple = ttns.calc_2dof_mutual_info(dofs, rdm_2dof)
+            with open(os.path.join(dump_dir, f'{i:04}_step_mutual_infos.pickle'), 'wb') as f:
+                pickle.dump(mutual_infos, f) 
+            with open(os.path.join(dump_dir, f'{i:04}_step_rdm_2dofs.pickle'), 'wb') as f:
+                pickle.dump(rdm_2dof, f) 
+            mutual_info_traj.append(mutual_infos)
+            logger.info(f'step {i} mutual_infos: {mutual_infos}')  
 
         expectations.append(z)
-        entropy_1sites_traj.append(entropy_1sites)
-
         logger.info(f'step {i} z: {z}')
-        logger.info(f'step {i} entropy_1sites: {entropy_1sites}')
+        
 
-    with open(os.path.join(dump_dir, f'{job_name}_expectations.pickle'), 'wb') as f:
+    with open(os.path.join(dump_dir, f'expectations.pickle'), 'wb') as f:
         pickle.dump(expectations, f)
-    with open(os.path.join(dump_dir, f'{job_name}_entropy_1sites_traj.pickle'), 'wb') as f:
+    with open(os.path.join(dump_dir, f'entropy_1sites_traj.pickle'), 'wb') as f:
         pickle.dump(entropy_1sites_traj, f)
     logger.info('expectations')
     logger.info(expectations)
@@ -214,14 +238,16 @@ if __name__ == '__main__':
         for inf in range(len(expectations)):
             f.write(f'{inf}  {np.log10(1-expectations[inf])} \n')
 
-    with open(os.path.join(dump_dir, f'{job_name}_entropy_1sites.xvg'), 'w') as f:
-        f.write(f"@ title 's{s:.2f}_alpha{alpha:.2f}' \n")
-        idxs = sorted(list(ttns.basis.dof2idx.values()))
-        for i in range(len(ttns.basis.dof2idx)):
-            f.write(f"@ s{i} legend 's{s:.2f}_alpha{alpha:.2f}_dof_{idxs[i]}' \n")
+    # with open(os.path.join(dump_dir, f'{job_name}_entropy_1sites.xvg'), 'w') as f:
+    #     f.write(f"@ title 's{s:.2f}_alpha{alpha:.2f}' \n")
+    #     idxs = sorted(list(ttns.basis.dof2idx.values()))
+    #     for i in range(len(ttns.basis.dof2idx)):
+    #         f.write(f"@ s{i} legend 's{s:.2f}_alpha{alpha:.2f}_dof_{idxs[i]}' \n")
 
-        for inf in range(len(entropy_1sites_traj)):
-            f.write(f'{inf} ')
-            for dof_idx in idxs:
-                f.write(f'{entropy_1sites_traj[inf][dof_idx]} ')
-            f.write(f' \n')
+        # for inf in range(len(entropy_1sites_traj)):
+        #     f.write(f'{inf} ')
+        #     for dof_idx in idxs:
+        #         f.write(f'{entropy_1sites_traj[inf][dof_idx]} ')
+        #     f.write(f' \n')
+
+    logger.info(f'done calc, {job_name}')
