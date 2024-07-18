@@ -31,6 +31,10 @@ if __name__ == '__main__':
     parser.add_argument("--calc_1sites_entropy", default=0, help="0: n, 1: y", type=int)
     parser.add_argument("--calc_mutual_info", default=0, help="0: n, 1: y", type=int)
 
+    parser.add_argument("--restart", default=0, help="0: n, 1: y", type=int)
+
+
+
 
 
     args = parser.parse_args()
@@ -49,6 +53,7 @@ if __name__ == '__main__':
     store_all = args.store_all
     is_calc_1sites_entropy = args.calc_1sites_entropy
     is_calc_mutual_info = args.calc_mutual_info
+    is_restart = args.restart
     # parm translate
     s_reno = s
     alpha_reno = 4*alpha # tranlate from wang1 to PRL
@@ -180,7 +185,7 @@ if __name__ == '__main__':
     for i in range(nsteps):
         logger.info(f'proceeding step {i}')
         ttns = ttns.evolve(ttno, dt)
-        if store_all:
+        if store_all or i%10 ==0:
             dump_file = os.path.join(dump_dir, f'{job_name}_{i}_step_ttns.npz')
             ttns.dump(dump_file)
         else:
@@ -214,8 +219,8 @@ if __name__ == '__main__':
             mutual_infos, entropy_tuple = ttns.calc_2dof_mutual_info(dofs, rdm_2dof)
             with open(os.path.join(dump_dir, f'{i:04}_step_mutual_infos.pickle'), 'wb') as f:
                 pickle.dump(mutual_infos, f) 
-            with open(os.path.join(dump_dir, f'{i:04}_step_rdm_2dofs.pickle'), 'wb') as f:
-                pickle.dump(rdm_2dof, f) 
+            # with open(os.path.join(dump_dir, f'{i:04}_step_rdm_2dofs.pickle'), 'wb') as f:
+            #     pickle.dump(rdm_2dof, f) 
             mutual_info_traj.append(mutual_infos)
             logger.info(f'step {i} mutual_infos: {mutual_infos}')  
 
@@ -225,8 +230,9 @@ if __name__ == '__main__':
 
     with open(os.path.join(dump_dir, f'expectations.pickle'), 'wb') as f:
         pickle.dump(expectations, f)
-    with open(os.path.join(dump_dir, f'entropy_1sites_traj.pickle'), 'wb') as f:
-        pickle.dump(entropy_1sites_traj, f)
+    if is_calc_1sites_entropy:
+        with open(os.path.join(dump_dir, f'entropy_1sites_traj.pickle'), 'wb') as f:
+            pickle.dump(entropy_1sites_traj, f)
     logger.info('expectations')
     logger.info(expectations)
 
