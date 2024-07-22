@@ -214,7 +214,7 @@ if __name__ == '__main__':
             # mutual_infos = {}
             # entropy_ts = {}
             dof1 ='spin'
-            dofs = [(dof1, f'v_{i}')for i in range(100)]
+            dofs = [(dof1, f'v_{i*10}')for i in range(100)]
             rdm_2dof = ttns.calc_2dof_rdm(dofs)
             mutual_infos, entropy_tuple = ttns.calc_2dof_mutual_info(dofs, rdm_2dof)
             with open(os.path.join(dump_dir, f'{i:04}_step_mutual_infos.pickle'), 'wb') as f:
