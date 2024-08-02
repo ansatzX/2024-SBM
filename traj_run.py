@@ -6,7 +6,7 @@ from renormalizer.model import Op
 from renormalizer.model import basis as ba
 from renormalizer.mps.mps import expand_bond_dimension_general
 from renormalizer.sbm import OhmicSDF
-from renormalizer.utils import EvolveConfig, CompressConfig, CompressCriteria, EvolveMethod
+from renormalizer.utils import EvolveConfig, CompressConfig, CompressCriteria, EvolveMethod, Quantity
 from renormalizer.utils import log
 from renormalizer.tn import BasisTree, TTNO, TTNS, TreeNodeBasis
 import argparse
@@ -14,6 +14,41 @@ import numpy as np
 from renormalizer.utils.log import package_logger
 import pickle
 
+
+
+class rho_ohmic(OhmicSDF):
+
+    def __init__(self, alpha: float, omega_c: Union[Quantity, float], s: float = 1, rho_type: int = 0):
+        super().__init__(alpha, omega_c, s)
+        self.rho_type = rho_type
+
+    def _dos_Wang1(self, nb, omega_value):
+        if self.rho_type == 0:
+            return super()._dos_Wang1(nb, omega_value)
+        elif self.rho_type == 1:
+            rho=np.zeros(nb)
+            for i in range(nb):
+                if i == 0:
+                    rho[i] = 1/(omega_value[i]-0)
+                else:
+                    rho[i] = 1/(omega_value[i]-omega_value[i-1])
+
+            return rho
+    def Wang1(self, nb):
+        r"""
+        Wang's 1st scheme discretization
+        """
+        if self.rho_type == 0:
+            omega_value = np.array([-np.log(-float(j) / (nb + 1) + 1.0) * self.omega_c for j in range(1, nb + 1, 1)])
+        elif self.rho_type == 1:
+            # make same range of rho_type 1
+            over_length = -np.log(-float(nb) / (nb + 1) + 1.0) * self.omega_c
+            omega_value = np.array([over_length/nb *(i+1) for i in range(nb)])
+        # general form
+        c_j2 = 2.0 / np.pi * omega_value * self.func(omega_value) / self._dos_Wang1(nb, omega_value)
+
+        return omega_value, c_j2
+    
 if __name__ == '__main__':
     # argpaser
     # 
@@ -30,7 +65,7 @@ if __name__ == '__main__':
     parser.add_argument("--store_all", default=0, help="0: n, 1: y", type=int)
     parser.add_argument("--calc_1sites_entropy", default=0, help="0: n, 1: y", type=int)
     parser.add_argument("--calc_mutual_info", default=0, help="0: n, 1: y", type=int)
-
+    parser.add_argument("--rho_type", default=0, help="select rho types in discre..", type=int)
     parser.add_argument("--restart", default=0, help="0: n, 1: y", type=int)
 
 
@@ -54,6 +89,7 @@ if __name__ == '__main__':
     is_calc_1sites_entropy = args.calc_1sites_entropy
     is_calc_mutual_info = args.calc_mutual_info
     is_restart = args.restart
+    rho_type  = args.rho_type
     # parm translate
     s_reno = s
     alpha_reno = 4*alpha # tranlate from wang1 to PRL
@@ -61,7 +97,7 @@ if __name__ == '__main__':
     # set log
     logger = package_logger
 
-    job_name = f"traj_s{s:.2f}_alpha{alpha:.2f}_Omega{Omega}_omega_c{omega_c}_nmodes{nmodes}_bond_dims{bond_dims}_td_method_{td_method}"  ####################
+    job_name = f"traj_s{s:.2f}_alpha{alpha:.2f}_Omega{Omega}_omega_c{omega_c}_nmodes{nmodes}_bond_dims{bond_dims}_td_method_{td_method}_rho_type_{rho_type}"  ####################
 
     dump_dir = job_name
     os.makedirs(job_name, exist_ok=True)
@@ -75,7 +111,7 @@ if __name__ == '__main__':
     Delta = Omega * 0.5
     eps = 0
     # call a sdf
-    sdf = OhmicSDF(alpha_reno, omega_c_reno, s_reno)
+    sdf = rho_ohmic(alpha_reno, omega_c_reno, s_reno, rho_type)
 
 
     # wang1?
@@ -185,13 +221,13 @@ if __name__ == '__main__':
     for i in range(nsteps):
         logger.info(f'proceeding step {i}')
         ttns = ttns.evolve(ttno, dt)
-        if store_all or i%10 ==0:
-            dump_file = os.path.join(dump_dir, f'{job_name}_{i}_step_ttns.npz')
-            ttns.dump(dump_file)
-        else:
-            if i == nsteps-1:
-                dump_file = os.path.join(dump_dir, f'{job_name}_last_step_ttns.npz')
-                ttns.dump(dump_file)
+        # if store_all or i%10 ==0:
+        #     dump_file = os.path.join(dump_dir, f'{job_name}_{i}_step_ttns.npz')
+        #     ttns.dump(dump_file)
+        # else:
+        #     if i == nsteps-1:
+        #         dump_file = os.path.join(dump_dir, f'{job_name}_last_step_ttns.npz')
+        #         ttns.dump(dump_file)
         # prop calc
         z: Union[float, complex] = ttns.expectation(exp_z)
         # entropy_1sites = []
