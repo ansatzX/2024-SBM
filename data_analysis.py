@@ -219,21 +219,21 @@ def plot_fig(prefix_folder, dat_dict, key, query_modes) -> None:
     print(fig_folder)
     os.makedirs(fig_folder, exist_ok=True)
 
-    S_ = {}
-    for i_mode in range(omgeas_eff.shape[0]):
-        w = omgeas_eff[i_mode]
-        if w < omega_c * Omega:
-            S_[i_mode] = [dat[i_mode] for dat in dats ]
-            if i_mode in query_modes_eff:
-                S_data = S_[i_mode]
-                w = omgeas_eff[i_mode]
-                plt.plot(range(0,100), S_data,'-', label=f'query_mode:{i_mode}')
-                plt.title(f't-S*rho: {key} {rho_type}')
-                plt.xlabel(f't')
-                plt.xlim(0, 100)
-                plt.ylabel(f'S')
-                plt.legend()
-                plt.savefig(f'{fig_folder}/t-S_rho{rho_type}_query_mode_{i_mode}.png')
+    # S_ = {}
+    # for i_mode in range(omgeas_eff.shape[0]):
+    #     w = omgeas_eff[i_mode]
+    #     if w < omega_c * Omega:
+    #         S_[i_mode] = [dat[i_mode] for dat in dats ]
+    #         if i_mode in query_modes_eff:
+    #             S_data = S_[i_mode]
+    #             w = omgeas_eff[i_mode]
+    #             plt.plot(range(0,100), S_data,'-', label=f'query_mode:{i_mode}')
+    #             plt.title(f't-S*rho: {key} {rho_type}')
+    #             plt.xlabel(f't')
+    #             plt.xlim(0, 100)
+    #             plt.ylabel(f'S')
+    #             plt.legend()
+    #             plt.savefig(f'{fig_folder}/t-S_rho{rho_type}_query_mode_{i_mode}.png')
  
 
     # uncomment this block to gen figs t-S
@@ -253,10 +253,7 @@ def plot_fig(prefix_folder, dat_dict, key, query_modes) -> None:
 
 
 
-    # dats = []
-    # for i_step in range(100):
-    #     dat = [ info_[i_step][f'v_{i:03}'] for i in range(nmodes) if f'v_{i:03}' in modes_eff ] 
-    #     dats.append(dat)
+
     y_lim = max([max(dat)for dat in dats])
     for i_step in range(100):
         dat = dats[i_step]
@@ -269,6 +266,48 @@ def plot_fig(prefix_folder, dat_dict, key, query_modes) -> None:
         plt.ylim(0, y_lim)
         plt.savefig(f'figs/{fig_folder}/w-S_nmodes{nmodes}_rho_type{rho_type}_{i_step:03}.png')
         plt.clf()
+
+
+
+def draw_t_S(prefix_folder, dat_dict, key, query_mode):
+#
+    # s = 0.7
+    # alpha = 0.05
+    s = float(os.path.basename(prefix_folder).split('_')[1][1:])
+    alpha = float(os.path.basename(prefix_folder).split('_')[2][5:])
+
+    Omega = int(os.path.basename(prefix_folder).split('_')[3][5:])
+    omega_c = int(os.path.basename(prefix_folder).split('_')[5][1:])
+    nmodes = int(os.path.basename(prefix_folder).split('_nmodes')[1].split('_')[0])
+
+    rho_type = 0 if 'rho_type' not in os.path.basename(prefix_folder) else int(os.path.basename(prefix_folder).split('rho_type_')[1])
+    # pf = os.path.join(prefix_folder, f'traj_s{s:.02f}_alpha{alpha:.02f}_Omega1_omega_c10_nmodes1000_bond_dims20_td_method_0')
+    # key = f's{s:.02f}-alpha{alpha:.02f}'
+    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key)
+    if query_mode not in modes_eff:
+        return 0, 0, 0, modes_eff
+    
+    S_ = {}
+    for i_mode in range(omgeas_eff.shape[0]):
+        w = omgeas_eff[i_mode]
+        if w < Omega * omega_c:
+            S_[i_mode] = [dat[i_mode] for dat in dats ]
+
+    dd = S_[query_mode]
+    w = omgeas_eff[query_mode]
+    plt.plot(range(0,100), dd,'-', label=f'query_mode:{query_mode}')
+    plt.title(f't-S*rho: {key} {rho_type}')
+    plt.xlabel(f't')
+    plt.xlim(0, 100)
+    plt.ylabel(f'S')
+    plt.legend()
+    # plt.ylim(0, y_lim)
+    # plt.savefig(f'figs/{key}_nmodes{nmodes}_rho_type_{rho_type}/w-S_nmodes{nmodes}_rho_type{rho_type}_{i_step:03}.png')
+    # plt.clf()
+    x_uniform, singnal_niform = interp_dat(np.arange(0,100), dd)
+    xf, yf = do_fft(x_uniform, singnal_niform)
+    freq, amplitude, phase = fft_analysis(xf, yf, x_uniform.shape[0])
+    return w, freq, amplitude, phase
 
 def chunk_data(prefix_folder, dat_dict, key):
     s = float(os.path.basename(prefix_folder).split('_')[1][1:])
@@ -328,13 +367,18 @@ def fft_analysis(xf, yf, N):
     else:
         return 0, 0, 0
     
-def func_gentor(freq, amp, phase):
+def func_gentor(param_a, param_b, param_c, d=None):
 
     def signal_func0(x, a, b, c, d):
-        return a * np.exp(-b* (x**c) )+ amp * np.sin(2.0 * np.pi * freq * x + phase)  + d
+        return a * np.exp(-b* (x**c) )+ param_a * np.sin(2.0 * np.pi * param_b * x + param_c)  + d
     def signal_func1(x, a, b, c, d):
         return a * np.exp(-b* (x**c) )  + d
-    if freq == 0:
-        return signal_func1
+    def signal_func2(x, a, b, c, d):
+        a * np.sin(2.0 * np.pi * b * x + c)  + d
+    if d == None:
+        if param_a == 0:
+            return signal_func1
+        else:
+            return signal_func0
     else:
-        return signal_func0
+        return signal_func2
