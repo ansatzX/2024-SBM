@@ -11,13 +11,13 @@ import shutil
 import seaborn as sns
 
 from traj_run import rho_ohmic
-from typing import Any
+from typing import Any, List, Union
 from numpy import dtype, ndarray
 import scipy
 from scipy.optimize import curve_fit
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
-import pywt
+# import pywt
 
 def num_monotonic(p0: float, p1: float, p2: float) -> int :
     """
@@ -129,9 +129,6 @@ def line_classify(data: np.ndarray) -> int:
         else:
             return 0
         
-
-
-
 def read_line(prefix_folder, line_dict) -> np.ndarray:
     infos_ = []
     for key in sorted(list(line_dict.keys())):
@@ -165,10 +162,6 @@ def read_omega(prefix_folder) -> np.ndarray:
         w, c2 = sdf.Wang1(nmodes)
         return w
 
-
-
-
-
 def read_exp(prefix_folder):
 
     with open(os.path.join(prefix_folder, 'expectations.pickle'), 'rb') as f:
@@ -191,8 +184,8 @@ def translate_param(s, alpha, omega_c, Omega):
 
     return s_reno, alpha_reno, omega_c_reno
 
-def plot_fig(prefix_folder, dat_dict, key, query_modes) -> None:
-
+def draw_w_S(prefix_folder, dat_dict, key) -> None:
+ 
     s = float(os.path.basename(prefix_folder).split('_')[1][1:])
     alpha = float(os.path.basename(prefix_folder).split('_')[2][5:])
 
@@ -212,8 +205,8 @@ def plot_fig(prefix_folder, dat_dict, key, query_modes) -> None:
     
     # rho_array = get_rho_array(alpha_reno, s_reno, omega_c_reno, nmodes, rho_type)
     # rho_array_eff: ndarray[Any, dtype[Any]] = np.array([ rho_array[i] for i in range(nmodes) if f'v_{i:03}' in info_[0].keys() ] )
-    omgeas_eff, rho_array_eff, dats, modes_eff  = chunk_data(prefix_folder, dat_dict, key)
-    query_modes_eff = [ j for j in [ i for i in range(nmodes) if f'v_{i:03}' in modes_eff] if j in query_modes  ]
+    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key)
+    # query_modes_eff = [ j for j in [ i for i in range(nmodes) if f'v_{i:03}' in modes_eff] if j in query_modes  ]
 
     fig_folder  = f'figs/{key}'# _nmodes{nmodes}_rho_type_{rho_type}'
     print(fig_folder)
@@ -257,20 +250,33 @@ def plot_fig(prefix_folder, dat_dict, key, query_modes) -> None:
     y_lim = max([max(dat)for dat in dats])
     for i_step in range(100):
         dat = dats[i_step]
-
-        plt.plot(omgeas_eff, np.array(dat), '-') # * rho_array_eff in chunk data
+        # print(dat.shape)
+        # print(omgeas_eff.shape)
+        plt.plot(omgeas_eff, dat, '-') # * rho_array_eff in chunk data
         plt.title(f'w-S*rho: {key} {rho_type}')
         plt.xlabel(f'omega')
-        plt.xlim(0, 70)
+        plt.xlim(0, omgeas_eff.max())
         plt.ylabel(f'S')
         plt.ylim(0, y_lim)
-        plt.savefig(f'figs/{fig_folder}/w-S_nmodes{nmodes}_rho_type{rho_type}_{i_step:03}.png')
-        plt.clf()
+        # plt.savefig(f'figs/{fig_folder}/w-S_nmodes{nmodes}_rho_type{rho_type}_{i_step:03}.png')
+        # plt.clf()
 
 
 
-def draw_t_S(prefix_folder, dat_dict, key, query_mode):
-#
+def draw_t_S(prefix_folder, dat_dict, key, query_mode: int):
+    """
+    --input--
+    prefix_folder: output folder of traj_run
+    dat_key: dict from function read_line
+    key: key for specified line/traj
+    query_mode: the dof to draw
+
+    --output--
+    w: omega of query_mode
+    freq: freq of t-S from fft
+    amplitude: amplitude of t-S from fft
+    phase: phase from fft
+    """
     # s = 0.7
     # alpha = 0.05
     s = float(os.path.basename(prefix_folder).split('_')[1][1:])
@@ -285,17 +291,21 @@ def draw_t_S(prefix_folder, dat_dict, key, query_mode):
     # key = f's{s:.02f}-alpha{alpha:.02f}'
     omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key)
     if query_mode not in modes_eff:
-        return 0, 0, 0, modes_eff
+        returntuple = ( 0, 0, 0, modes_eff)
     
-    S_ = {}
-    for i_mode in range(omgeas_eff.shape[0]):
-        w = omgeas_eff[i_mode]
-        if w < Omega * omega_c:
-            S_[i_mode] = [dat[i_mode] for dat in dats ]
-
-    dd = S_[query_mode]
+    # S_ = {}
+    # for i_mode in range(omgeas_eff.shape[0]):
+    #     w = omgeas_eff[i_mode]
+    #     if w < Omega * omega_c:
+    #         S_[i_mode] = [dat[i_mode] for dat in dats ]
     w = omgeas_eff[query_mode]
-    plt.plot(range(0,100), dd,'-', label=f'query_mode:{query_mode}')
+    if w > Omega * omega_c:
+        returntuple = ( 0, 0, 0, modes_eff)
+    
+    # query_index = np.where(omgeas_eff == query_mode)[0][0]
+    S = [dat[query_mode] for dat in dats ]
+    # w = omgeas_eff[query_index]
+    plt.plot(range(0,100), S,'-', label=f'query_mode: {query_mode}')
     plt.title(f't-S*rho: {key} {rho_type}')
     plt.xlabel(f't')
     plt.xlim(0, 100)
@@ -304,7 +314,7 @@ def draw_t_S(prefix_folder, dat_dict, key, query_mode):
     # plt.ylim(0, y_lim)
     # plt.savefig(f'figs/{key}_nmodes{nmodes}_rho_type_{rho_type}/w-S_nmodes{nmodes}_rho_type{rho_type}_{i_step:03}.png')
     # plt.clf()
-    x_uniform, singnal_niform = interp_dat(np.arange(0,100), dd)
+    x_uniform, singnal_niform = interp_dat(np.arange(0,100), S)
     xf, yf = do_fft(x_uniform, singnal_niform)
     freq, amplitude, phase = fft_analysis(xf, yf, x_uniform.shape[0])
     return w, freq, amplitude, phase
@@ -332,7 +342,9 @@ def chunk_data(prefix_folder, dat_dict, key):
 
     dats = []
     for i_step in range(100):
+        # S of specific mode i
         dat = [ info_[i_step][f'v_{i:03}'] for i in range(nmodes) if f'v_{i:03}' in info_[0].keys() ] 
+        
         dats.append(dat*rho_array_eff)
     return omgeas_eff, rho_array_eff, modes_eff, dats
 
@@ -359,7 +371,10 @@ def fft_analysis(xf, yf, N):
     fft_amp = 2.0/N *np.abs(yf[:N//2])
     indexs , _= scipy.signal.find_peaks(fft_amp)
     if len(indexs) != 0 : 
-        index = indexs[0]
+        peaks = [yf[index] for index in indexs]
+        index = indexs[peaks.index(max(peaks))]
+        print(peaks.index(max(peaks)), index)
+        # index = indexs[0]
         freq =  xf[index]
         amplitude = 2.0/N * np.abs(yf[index])
         phase = np.angle(yf[index])
