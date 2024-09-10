@@ -117,10 +117,13 @@ if __name__ == '__main__':
     # wang1?
     w, c2 = sdf.Wang1(nmodes)
     c = np.sqrt(c2)
+    w_eff = w[w< omega_c_reno] # which are not noise
     logger.info(f"w:{w}")
     logger.info(f"c:{c}")
     with open(os.path.join(dump_dir, f'sdf_wang1_omega.pickle'), 'wb') as f:
         pickle.dump(w, f)
+    with open(os.path.join(dump_dir, f'sdf_wang1_c.pickle'), 'wb') as f:
+        pickle.dump(c, f)
     # reno ?
     reno = sdf.reno(w[-1])
     logger.info(f"renormalization constant: {reno}")
@@ -236,7 +239,7 @@ if __name__ == '__main__':
         #     # ttns.calc_2dof_entropy()
         #     entropy_1sites.append(entropy_1sites)     
         if is_calc_1sites_entropy  : 
-            dofs = [f'v_{i}' for i in range(nmodes) ]
+            dofs = [f'v_{i}' for i in range(w_eff.shape[0]) if (i+1)%5 ==0 ]
             dofs.append('spin')
             logger.info(f'dofs:, {dofs}')
             entropy_1sites: Dict[Union[int, List], float] = ttns.calc_1dof_entropy(dofs)
@@ -250,7 +253,7 @@ if __name__ == '__main__':
             # mutual_infos = {}
             # entropy_ts = {}
             dof1 ='spin'
-            dofs = [(dof1, f'v_{i*10}')for i in range(100)]
+            dofs = [(dof1, f'v_{i}')for i in range(w_eff.shape[0]) if (i+1)%10==0 ]
             rdm_2dof = ttns.calc_2dof_rdm(dofs)
             mutual_infos, entropy_tuple = ttns.calc_2dof_mutual_info(dofs, rdm_2dof)
             with open(os.path.join(dump_dir, f'{i:04}_step_mutual_infos.pickle'), 'wb') as f:

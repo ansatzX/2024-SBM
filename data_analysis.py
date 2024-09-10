@@ -290,22 +290,26 @@ def draw_t_S(prefix_folder, dat_dict, key, query_mode: int):
     # pf = os.path.join(prefix_folder, f'traj_s{s:.02f}_alpha{alpha:.02f}_Omega1_omega_c10_nmodes1000_bond_dims20_td_method_0')
     # key = f's{s:.02f}-alpha{alpha:.02f}'
     omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key)
-    if query_mode not in modes_eff:
-        returntuple = ( 0, 0, 0, modes_eff)
+    if f'v_{query_mode}' not in modes_eff:
+        returntuple = ( 0, 0, 0, 0, 0, 0)
+        return returntuple
     
     # S_ = {}
     # for i_mode in range(omgeas_eff.shape[0]):
     #     w = omgeas_eff[i_mode]
     #     if w < Omega * omega_c:
     #         S_[i_mode] = [dat[i_mode] for dat in dats ]
-    w = omgeas_eff[query_mode]
+    w = omgeas_eff[modes_eff.index(f'v_{query_mode}')]
     if w > Omega * omega_c:
-        returntuple = ( 0, 0, 0, modes_eff)
+        returntuple = ( 0, 0, 0, 0, 0, 0)
+        return returntuple
     
     # query_index = np.where(omgeas_eff == query_mode)[0][0]
-    S = [dat[query_mode] for dat in dats ]
+    S = [dat[modes_eff.index(f'v_{query_mode}')] for dat in dats ]
     # w = omgeas_eff[query_index]
-    plt.plot(range(0,100), S,'-', label=f'query_mode: {query_mode}')
+    interp_number = 100000
+    x_uniform, singnal_niform = interp_dat(np.arange(0,100), S, interp_number)
+    plt.plot(x_uniform, singnal_niform,'-', label=f'query_mode: {query_mode}, w:{w}')
     plt.title(f't-S*rho: {key} {rho_type}')
     plt.xlabel(f't')
     plt.xlim(0, 100)
@@ -314,10 +318,13 @@ def draw_t_S(prefix_folder, dat_dict, key, query_mode: int):
     # plt.ylim(0, y_lim)
     # plt.savefig(f'figs/{key}_nmodes{nmodes}_rho_type_{rho_type}/w-S_nmodes{nmodes}_rho_type{rho_type}_{i_step:03}.png')
     # plt.clf()
-    x_uniform, singnal_niform = interp_dat(np.arange(0,100), S)
-    xf, yf = do_fft(x_uniform, singnal_niform)
-    freq, amplitude, phase = fft_analysis(xf, yf, x_uniform.shape[0])
-    return w, freq, amplitude, phase
+
+    xf, yf = do_fft(x_uniform, singnal_niform, interp_number)
+    fft_amp = 2.0/interp_number * np.abs(yf)
+    freq, amplitude, phase = fft_analysis(xf, yf, interp_number)
+
+    returntuple = (w, freq, amplitude, phase, xf, fft_amp)
+    return returntuple
 
 def chunk_data(prefix_folder, dat_dict, key):
     s = float(os.path.basename(prefix_folder).split('_')[1][1:])
@@ -336,29 +343,29 @@ def chunk_data(prefix_folder, dat_dict, key):
 
 
     rho_array = get_rho_array(alpha_reno, s_reno, omega_c_reno, nmodes, rho_type)
-    modes_eff = [ f'v_{i:03}' for i in range(nmodes) if f'v_{i:03}' in info_[0].keys() ]
-    omgeas_eff: ndarray[Any, dtype[Any]] = np.array([ omgeas[i] for i in range(nmodes) if f'v_{i:03}' in info_[0].keys() ] )
-    rho_array_eff: ndarray[Any, dtype[Any]] = np.array([ rho_array[i] for i in range(nmodes) if f'v_{i:03}' in info_[0].keys() ] )
+    modes_eff = [ f'v_{i}' for i in range(nmodes) if f'v_{i}' in info_[0].keys() ]
+    omgeas_eff: ndarray[Any, dtype[Any]] = np.array([ omgeas[i] for i in range(nmodes) if f'v_{i}' in info_[0].keys() ] )
+    rho_array_eff: ndarray[Any, dtype[Any]] = np.array([ rho_array[i] for i in range(nmodes) if f'v_{i}' in info_[0].keys() ] )
 
     dats = []
     for i_step in range(100):
         # S of specific mode i
-        dat = [ info_[i_step][f'v_{i:03}'] for i in range(nmodes) if f'v_{i:03}' in info_[0].keys() ] 
-        
+        dat = [ info_[i_step][f'v_{i}'] for i in range(nmodes) if f'v_{i}' in info_[0].keys() ] 
+
         dats.append(dat*rho_array_eff)
     return omgeas_eff, rho_array_eff, modes_eff, dats
 
 
-def interp_dat(x, y):
-    N = x.shape[0]
-    x_uniform = np.linspace(x.min(), x.max(), N)
+def interp_dat(x, y, interp_number):
+    # N = x.shape[0]
+    x_uniform = np.linspace(x.min(), x.max(), interp_number)
     interpolator = interp1d(x, y, kind='cubic')
     y_uniform = interpolator(x_uniform)
 
     return x_uniform, y_uniform
 
-def do_fft(x_uniform, y_uniform):
-    N = x_uniform.shape[0]
+def do_fft(x_uniform, y_uniform, N):
+
     T = (x_uniform.max() - x_uniform.min()) / N  # sample Time
 
     yf = fft(y_uniform)
@@ -369,11 +376,11 @@ def do_fft(x_uniform, y_uniform):
 def fft_analysis(xf, yf, N):
 
     fft_amp = 2.0/N *np.abs(yf[:N//2])
-    indexs , _= scipy.signal.find_peaks(fft_amp)
+    indexs , _ = scipy.signal.find_peaks(fft_amp)
     if len(indexs) != 0 : 
         peaks = [yf[index] for index in indexs]
         index = indexs[peaks.index(max(peaks))]
-        print(peaks.index(max(peaks)), index)
+        # print(peaks.index(max(peaks)), index)
         # index = indexs[0]
         freq =  xf[index]
         amplitude = 2.0/N * np.abs(yf[index])
