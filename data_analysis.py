@@ -3,12 +3,12 @@ import numpy as np
 import os
 from typing import List
 from enum import Enum
-
+import pywt
 import pickle
 from matplotlib import pyplot as plt
 import matplotlib
 import shutil
-import seaborn as sns
+# import seaborn as sns
 
 from traj_run import rho_ohmic
 from typing import Any, List, Union
@@ -307,14 +307,14 @@ def draw_t_S(prefix_folder, dat_dict, key, query_mode: int):
     # query_index = np.where(omgeas_eff == query_mode)[0][0]
     S = [dat[modes_eff.index(f'v_{query_mode}')] for dat in dats ]
     # w = omgeas_eff[query_index]
-    interp_number = 100000
-    x_uniform, singnal_niform = interp_dat(np.arange(0,100), S, interp_number)
+    interp_number = 100
+    x_uniform, singnal_niform = interp_dat(np.arange(0, 10, 0.1), S, interp_number)
     plt.plot(x_uniform, singnal_niform,'-', label=f'query_mode: {query_mode}, w:{w}')
     plt.title(f't-S*rho: {key} {rho_type}')
     plt.xlabel(f't')
-    plt.xlim(0, 100)
+    plt.xlim(0, 10)
     plt.ylabel(f'S')
-    plt.legend()
+    plt.legend(loc=2, bbox_to_anchor=(1.0, 1.0))
     # plt.ylim(0, y_lim)
     # plt.savefig(f'figs/{key}_nmodes{nmodes}_rho_type_{rho_type}/w-S_nmodes{nmodes}_rho_type{rho_type}_{i_step:03}.png')
     # plt.clf()
@@ -375,16 +375,16 @@ def do_fft(x_uniform, y_uniform, N):
 
 def fft_analysis(xf, yf, N):
 
-    fft_amp = 2.0/N *np.abs(yf[:N//2])
+    fft_amp = 2.0/N * np.real(yf[:N//2])
     indexs , _ = scipy.signal.find_peaks(fft_amp)
     if len(indexs) != 0 : 
-        peaks = [yf[index] for index in indexs]
+        peaks = [fft_amp[index] for index in indexs]
         index = indexs[peaks.index(max(peaks))]
         # print(peaks.index(max(peaks)), index)
         # index = indexs[0]
         freq =  xf[index]
-        amplitude = 2.0/N * np.abs(yf[index])
-        phase = np.angle(yf[index])
+        amplitude = 2.0/N * np.real(yf[index])
+        phase = np.angle(np.real(yf[index]))
         return freq, amplitude, phase
     else:
         return 0, 0, 0
@@ -404,3 +404,22 @@ def func_gentor(param_a, param_b, param_c, d=None):
             return signal_func0
     else:
         return signal_func2
+
+
+def wavelet_denoising(signal):
+    wavelet_name ='db2'
+
+    # signal = get_data_of_vodf(s=0.7, alpha=0.40, nmodes=1000, rho_type=0, idof=204, nsteps = 100)
+    coeffs = pywt.wavedec(signal, wavelet_name)
+
+    # 近似系数和细节系数
+    approx = coeffs[0]
+    details = coeffs[1:]
+
+    # 进行小波逆变换
+    reconstructed_signal = pywt.waverec([approx] + details, wavelet_name)
+
+    # plt.plot(signal, label='ori')
+    # plt.plot(reconstructed_signal, 'o',label='rec')
+    # plt.legend() 
+    return reconstructed_signal
