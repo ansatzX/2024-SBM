@@ -44,7 +44,12 @@ def num_monotonic(p0: float, p1: float, p2: float) -> int :
         return 1
     
 def line_monotonic_detect(data: List[float]) -> List[int]:
-
+    '''
+    0: ascend
+    1: decend
+    2: non monotonic peak
+    3: non monotonic valley
+    '''
     if data[0] < data[1]:
         is_monotonic_results = [0]
     else: # can not be same
@@ -319,7 +324,8 @@ def draw_t_S(prefix_folder, dat_dict, key, query_mode: int):
     # plt.savefig(f'figs/{key}_nmodes{nmodes}_rho_type_{rho_type}/w-S_nmodes{nmodes}_rho_type{rho_type}_{i_step:03}.png')
     # plt.clf()
 
-    xf, yf = do_fft(x_uniform, singnal_niform, interp_number)
+    # xf, yf = do_fft(x_uniform, singnal_niform, interp_number)
+    xf, yf = do_cft(x_uniform, singnal_niform, interp_number)
     fft_amp = 2.0/interp_number * np.abs(yf)
     freq, amplitude, phase = fft_analysis(xf, yf, interp_number)
 
@@ -356,10 +362,10 @@ def chunk_data(prefix_folder, dat_dict, key):
     return omgeas_eff, rho_array_eff, modes_eff, dats
 
 
-def interp_dat(x, y, interp_number):
+def interp_dat(x, y, interp_number, kind='cubic'):
     # N = x.shape[0]
     x_uniform = np.linspace(x.min(), x.max(), interp_number)
-    interpolator = interp1d(x, y, kind='cubic')
+    interpolator = interp1d(x, y, kind)
     y_uniform = interpolator(x_uniform)
 
     return x_uniform, y_uniform
@@ -368,23 +374,33 @@ def do_fft(x_uniform, y_uniform, N):
 
     T = (x_uniform.max() - x_uniform.min()) / N  # sample Time
 
-    yf = fft(y_uniform)
+    yf = fft(y_uniform)[:N//2]
     xf = fftfreq(N, T)[:N//2]
 
     return xf, yf
 
+def do_cft(x_uniform, y_uniform, N):
+
+    xf = np.linspace(0, 10, N) # 10 is omega_c
+    yf = []
+    for omega in x_uniform:
+        yf.append(scipy.integrate.trapezoid(y_uniform * np.exp(-1j * 2 * np.pi * omega * x_uniform), x_uniform))
+    
+    return xf, yf
+
 def fft_analysis(xf, yf, N):
 
-    fft_amp = 2.0/N * np.real(yf[:N//2])
+    fft_amp = 2.0/N * np.abs(yf)
     indexs , _ = scipy.signal.find_peaks(fft_amp)
     if len(indexs) != 0 : 
         peaks = [fft_amp[index] for index in indexs]
         index = indexs[peaks.index(max(peaks))]
+        index = indexs[0]
         # print(peaks.index(max(peaks)), index)
         # index = indexs[0]
         freq =  xf[index]
-        amplitude = 2.0/N * np.real(yf[index])
-        phase = np.angle(np.real(yf[index]))
+        amplitude = 2.0/N * np.abs(yf[index])
+        phase = np.angle(np.abs(yf[index]))
         return freq, amplitude, phase
     else:
         return 0, 0, 0
@@ -407,19 +423,151 @@ def func_gentor(param_a, param_b, param_c, d=None):
 
 
 def wavelet_denoising(signal):
-    wavelet_name ='db2'
+    wavelet_name ='db4'
 
     # signal = get_data_of_vodf(s=0.7, alpha=0.40, nmodes=1000, rho_type=0, idof=204, nsteps = 100)
-    coeffs = pywt.wavedec(signal, wavelet_name)
+    coeffs = pywt.wavedec(signal, wavelet_name, level=3)
+    coeff_denoising = [coeffs[0]] + [ np.zeros_like(coeffs[i]) for i in range(1, len(coeffs)) ]
 
-    # 近似系数和细节系数
-    approx = coeffs[0]
-    details = coeffs[1:]
 
-    # 进行小波逆变换
-    reconstructed_signal = pywt.waverec([approx] + details, wavelet_name)
+    reconstructed_signal = pywt.waverec(coeff_denoising, wavelet_name)
 
     # plt.plot(signal, label='ori')
     # plt.plot(reconstructed_signal, 'o',label='rec')
     # plt.legend() 
     return reconstructed_signal
+
+
+def show_result_t_S(mother_folder, data_dict, s, alpha, nmodes, rho_type, step_length=1, query_modes=None):# -> tuple[list, list, list]:
+    imodes = []
+    ws = []
+    freqs = []
+    amps = []
+    xfs = []
+    fft_amps = []
+    # s = 0.7
+    # alpha = 0.05
+    # nmodes = 1000
+    # rho_type = 0
+    pf = os.path.join(mother_folder, f'traj_s{s:.02f}_alpha{alpha:.02f}_Omega1_omega_c10_nmodes{nmodes}_bond_dims20_td_method_0_rho_type_{rho_type}')
+
+    # key = f's{s:.02f}-alpha{alpha:.02f}'
+    key = f"s{s:.02f}-alpha{alpha:.02f}-nmodes{nmodes}-rho{rho_type}"
+    if query_modes is not None:
+        draw_lst = query_modes
+    else:
+        draw_lst = range(0, nmodes, step_length)
+    for i in draw_lst:
+        query_mode = i
+        w, freq, amplitude, phase, xf, fft_amp = draw_t_S(pf, data_dict, key, query_mode)
+        if w != 0 :
+            imodes.append(query_mode)
+            ws.append(w)
+            freqs.append(freq)
+            amps.append(amplitude)
+            xfs.append(xf)
+            fft_amps.append(fft_amp)
+    return imodes, ws, freqs, amps, xfs, fft_amps, key
+
+def show_fft_res(imodes, key, xfs, fft_amps, query_mode=None):
+    plt.title(f'{key}')
+    cuttoff_N = int(xfs[0].__len__() )
+    print(f'cuttoff_N: {cuttoff_N}')
+    if query_mode is None:
+        for i in range(len(imodes)):
+            imode = imodes[i]
+            plt.plot(xfs[i][:cuttoff_N], np.abs(fft_amps[i][:cuttoff_N]), '-', label=f'mode v{imode}')
+    else:
+        i = imodes.index(query_mode)
+        print(f'query index{i}')
+        plt.plot(xfs[i][:cuttoff_N], fft_amps[i][:cuttoff_N], '-', label=f'mode v{query_mode}')
+        indexs , _ = scipy.signal.find_peaks(fft_amps[i][:cuttoff_N])
+        peaks = [fft_amps[i][:cuttoff_N][index] for index in indexs]
+        print(f'index: {indexs}')
+        print(f'peaks: {peaks}')
+        print(f'freq: {[xfs[i][:cuttoff_N][index] for index in indexs]}')
+        highlight_x = []
+        highlight_y = []
+        for index in indexs:
+            highlight_x.append(xfs[i][:cuttoff_N][index])
+            highlight_y.append(np.abs(fft_amps[i][:cuttoff_N][index]))
+        plt.scatter(highlight_x, highlight_y, color='red')
+    plt.legend(loc=2, bbox_to_anchor=(1.0, 1.0))
+
+def show_w_freqs(key, ws, freqs):
+    plt.title(f'w-freq:{key}')
+    plt.plot(ws, freqs,'-')
+    plt.plot(ws, freqs,'o')
+    plt.xlabel('freq of phonon')
+    plt.ylabel('freq of S')
+    plt.xlim(0,10)
+    plt.ylim(0,max(freqs))
+
+def show_w_freqs1(key, ws, freqs, imodes, xfs, fft_amps):
+    plt.title(f'w-freq:{key}')
+    cuttoff_N = int(xfs[0].__len__())
+    highlight_x = []
+    highlight_y = []
+    for imode in imodes:
+        i = imodes.index(imode)
+        w = ws[i]
+        indexs , _ = scipy.signal.find_peaks(fft_amps[i][:cuttoff_N])
+        peaks = [fft_amps[i][:cuttoff_N][index] for index in indexs]
+        # print(f'index: {indexs}')
+        # print(f'peaks: {peaks}')
+        # print(f'freq: {[xfs[i][:cuttoff_N][index] for index in indexs]}')
+        for index in indexs:
+            # highlight_x.append(xfs[i][:cuttoff_N][index])
+            # highlight_y.append(fft_amps[i][:cuttoff_N][index])
+            highlight_x.append(w)
+            highlight_y.append(xfs[i][:cuttoff_N][index])
+    plt.scatter(highlight_x, highlight_y, color='red')
+    # plt.plot(ws, freqs,'-')
+    # plt.plot(ws, freqs,'o')
+    plt.xlabel('freq of phonon')
+    plt.ylabel('freq of S')
+    plt.xlim(0,10)
+    plt.ylim(0,max(highlight_y))
+
+
+
+def get_data_of_vodf(mother_folder, data_dict, s, alpha, nmodes, rho_type, idof , nsteps = 100):
+    # s = 0.7
+    # alpha = 0.05
+    # nmodes = 1000
+    # rho_type = 0
+    
+    pf = os.path.join(mother_folder, f'traj_s{s:.02f}_alpha{alpha:.02f}_Omega1_omega_c10_nmodes{nmodes}_bond_dims20_td_method_0_rho_type_{rho_type}')
+
+    key = f"s{s:.02f}-alpha{alpha:.02f}-nmodes{nmodes}-rho{rho_type}" 
+    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(pf, data_dict, key)
+    # w = omgeas_eff[modes_eff.index(f'v_{idof}')]
+    signal = [ dats[i][[modes_eff.index(f'v_{idof}')]][0] for i in range(nsteps) ]
+
+    return signal
+
+
+def average_T(time_data, dt_indexs):
+    Ts = []
+    for i in range(1, len(dt_indexs)):
+        index0 = dt_indexs[i-1]
+        index1 = dt_indexs[i]
+        T = time_data[index1] - time_data[index0]
+        Ts.append(T)
+    return np.mean(Ts)
+
+
+def get_signal_freq(mother_folder, data_dict, s, alpha, nmodes, rho_type, nsteps, imode, plot=False):
+    signal = get_data_of_vodf(mother_folder=mother_folder, data_dict=data_dict, s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, idof=imode, nsteps=nsteps)
+    x_uniform, y_uniform = interp_dat(np.linspace(0,10,100), np.array(signal), 1000, kind='quadratic')
+    y_deno = wavelet_denoising(y_uniform)
+
+    time_data= np.linspace(0, 10, 1000)
+
+    dt_indexs = scipy.signal.argrelmax(y_deno)[0]
+    if plot:
+        plt.plot(y_deno, label=f'v_{imode}')
+        plt.legend(loc=2, bbox_to_anchor=(1.0, 1.0))
+    freq = 1/ average_T(time_data, dt_indexs)
+    
+    return freq
