@@ -381,9 +381,9 @@ def do_fft(x_uniform, y_uniform, N):
 
 def do_cft(x_uniform, y_uniform, N):
 
-    xf = np.linspace(0, 10, N) # 10 is omega_c
+    xf = np.linspace(0, 5, N) # 10 is omega_c ; 5 is half of it 
     yf = []
-    for omega in x_uniform:
+    for omega in xf:
         yf.append(scipy.integrate.trapezoid(y_uniform * np.exp(-1j * 2 * np.pi * omega * x_uniform), x_uniform))
     
     return xf, yf
@@ -393,15 +393,51 @@ def fft_analysis(xf, yf, N):
     fft_amp = 2.0/N * np.abs(yf)
     indexs , _ = scipy.signal.find_peaks(fft_amp)
     if len(indexs) != 0 : 
-        peaks = [fft_amp[index] for index in indexs]
-        index = indexs[peaks.index(max(peaks))]
-        index = indexs[0]
-        # print(peaks.index(max(peaks)), index)
-        # index = indexs[0]
+        amp = 2.0/N * np.abs(yf)
+
+        max_indexs = scipy.signal.argrelmax(amp)[0]
+        min_indexs = scipy.signal.argrelmin(amp)[0]
+        peaks = []
+        for i_peak in range(len(max_indexs)):
+            peak_index = max_indexs[i_peak]
+            left_index = min_indexs[min_indexs < peak_index][-1]
+            right_index = min_indexs[min_indexs > peak_index][0]
+            base_line = (amp[left_index] + amp[right_index])/2
+            value = amp[peak_index] - base_line
+            peaks.append(value)
+
+        sorted_peaks = sorted(peaks, reverse=True)
+        index = max_indexs[peaks.index(sorted_peaks[0])] # xf index
         freq =  xf[index]
-        amplitude = 2.0/N * np.abs(yf[index])
-        phase = np.angle(np.abs(yf[index]))
-        return freq, amplitude, phase
+        max_freq = freq
+        amplitude = peaks[peaks.index(sorted_peaks[0])]
+        plt.scatter(freq, amplitude, color='red')
+        plt.annotate(text=f'{freq}_{amplitude:02f}', xy=(xf[index], amp[index]), xytext=(xf[index], amp[index]))
+        plt.plot(xf, amp)
+
+        if len(max_indexs) >= 1:
+            index = max_indexs[peaks.index(sorted_peaks[1])]
+            freq =  xf[index]
+            amplitude = peaks[peaks.index(sorted_peaks[1])]
+            plt.scatter(freq, amplitude, color='red')
+            plt.annotate(text=f'{freq}_{amplitude:02f}', xy=(xf[index], amp[index]), xytext=(xf[index], amp[index]))
+        if len(max_indexs) >= 2:
+            index = max_indexs[peaks.index(sorted_peaks[2])]
+            freq =  xf[index]
+            amplitude = peaks[peaks.index(sorted_peaks[2])]
+            plt.scatter(freq, amplitude, color='red')
+            plt.annotate(text=f'{freq}_{amplitude:02f}', xy=(xf[index], amp[index]), xytext=(xf[index], amp[index]))
+        plt.xlim(0.1, 5)
+
+        # peaks = [fft_amp[index] for index in indexs]
+        # index = indexs[peaks.index(max(peaks))]
+        # index = indexs[0]
+        # # print(peaks.index(max(peaks)), index)
+        # # index = indexs[0]
+        # freq =  xf[index]
+        # amplitude = 2.0/N * np.abs(yf[index])
+        # phase = np.angle(np.abs(yf[index]))
+        return max_freq, amplitude, 0
     else:
         return 0, 0, 0
     
@@ -427,7 +463,8 @@ def wavelet_denoising(signal):
 
     # signal = get_data_of_vodf(s=0.7, alpha=0.40, nmodes=1000, rho_type=0, idof=204, nsteps = 100)
     coeffs = pywt.wavedec(signal, wavelet_name, level=3)
-    coeff_denoising = [coeffs[0]] + [ np.zeros_like(coeffs[i]) for i in range(1, len(coeffs)) ]
+    cutoff_index = 4
+    coeff_denoising = [coeffs[i] for i in range(0, cutoff_index)] + [ np.zeros_like(coeffs[i]) for i in range(cutoff_index, len(coeffs)) ]
 
 
     reconstructed_signal = pywt.waverec(coeff_denoising, wavelet_name)
@@ -544,7 +581,7 @@ def get_data_of_vodf(mother_folder, data_dict, s, alpha, nmodes, rho_type, idof 
     # w = omgeas_eff[modes_eff.index(f'v_{idof}')]
     signal = [ dats[i][[modes_eff.index(f'v_{idof}')]][0] for i in range(nsteps) ]
 
-    return signal
+    return omgeas_eff, modes_eff, signal
 
 
 def average_T(time_data, dt_indexs):
@@ -558,7 +595,8 @@ def average_T(time_data, dt_indexs):
 
 
 def get_signal_freq(mother_folder, data_dict, s, alpha, nmodes, rho_type, nsteps, imode, plot=False):
-    signal = get_data_of_vodf(mother_folder=mother_folder, data_dict=data_dict, s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, idof=imode, nsteps=nsteps)
+    # count period
+    omgeas_eff, modes_eff, signal= get_data_of_vodf(mother_folder=mother_folder, data_dict=data_dict, s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, idof=imode, nsteps=nsteps)
     x_uniform, y_uniform = interp_dat(np.linspace(0,10,100), np.array(signal), 1000, kind='quadratic')
     y_deno = wavelet_denoising(y_uniform)
 
@@ -569,5 +607,23 @@ def get_signal_freq(mother_folder, data_dict, s, alpha, nmodes, rho_type, nsteps
         plt.plot(y_deno, label=f'v_{imode}')
         plt.legend(loc=2, bbox_to_anchor=(1.0, 1.0))
     freq = 1/ average_T(time_data, dt_indexs)
+    iw = modes_eff.index(f'v_{imode}')
+    w = omgeas_eff[iw]
+    return w, freq
+
+
+def get_true_peaks_ft(xf, yf, N):# -> tuple[Any, list]:
     
-    return freq
+    amp = 2.0/N * np.abs(yf)
+
+    max_indexs = scipy.signal.argrelmax(amp)[0]
+    min_indexs = scipy.signal.argrelmin(amp)[0]
+    peaks = []
+    for i_peak in range(len(max_indexs)):
+        peak_index = max_indexs[i_peak]
+        left_index = min_indexs[min_indexs < peak_index][-1]
+        right_index = min_indexs[min_indexs > peak_index][0]
+        base_line = (amp[left_index] + amp[right_index])/2
+        value = amp[peak_index] - base_line
+        peaks.append(value)
+    return max_indexs.tolist(), peaks

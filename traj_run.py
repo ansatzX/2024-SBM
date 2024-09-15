@@ -67,6 +67,7 @@ if __name__ == '__main__':
     parser.add_argument("--calc_mutual_info", default=0, help="0: n, 1: y", type=int)
     parser.add_argument("--rho_type", default=0, help="select rho types in discre..", type=int)
     parser.add_argument("--restart", default=0, help="0: n, 1: y", type=int)
+    parser.add_argument("--restart_mother_folder", default='.', help="indicate where calc files located", type=str)
 
 
 
@@ -90,6 +91,8 @@ if __name__ == '__main__':
     is_calc_mutual_info = args.calc_mutual_info
     is_restart = args.restart
     rho_type  = args.rho_type
+    is_restart = args.restart
+    restart_mother_folder = args.restart_mother_folder
     # parm translate
     s_reno = s
     alpha_reno = 4*alpha # tranlate from wang1 to PRL
@@ -102,7 +105,8 @@ if __name__ == '__main__':
     dump_dir = job_name
     os.makedirs(job_name, exist_ok=True)
     log.register_file_output(os.path.join(dump_dir, f'{job_name}.log'), mode="w")
-
+    if is_restart:
+        restart_folder = os.path.join(restart_mother_folder, job_name)
     # use old settings from example
     # nmodes = 1000
     Ms = bond_dims
@@ -114,7 +118,7 @@ if __name__ == '__main__':
     sdf = rho_ohmic(alpha_reno, omega_c_reno, s_reno, rho_type)
 
 
-    # wang1?
+    # wang1
     w, c2 = sdf.Wang1(nmodes)
     c = np.sqrt(c2)
     w_eff = w[w< omega_c_reno] # which are not noise
@@ -135,14 +139,14 @@ if __name__ == '__main__':
 
     # h_s
     # sigma_z sigma_x
-    ham_terms.extend([Op("sigma_z","spin",factor=eps, qn=0),
-            Op("sigma_x","spin",factor=Delta, qn=0)])
+    ham_terms.extend([Op("sigma_z", "spin", factor=eps, qn=0),
+            Op("sigma_x", "spin", factor=Delta, qn=0)])
     # ham_terms.append(Op("sigma_x","spin",factor=Delta, qn=0))
 
     # boson energy
     for imode in range(nmodes):
-        op1 = Op(r"p^2",f"v_{imode}",factor=0.5, qn=0)
-        op2 = Op(r"x^2",f"v_{imode}",factor=0.5*w[imode]**2, qn=0)
+        op1 = Op(r"p^2", f"v_{imode}", factor=0.5, qn=0)
+        op2 = Op(r"x^2", f"v_{imode}", factor=0.5*w[imode]**2, qn=0)
         ham_terms.extend([op1,op2])
 
     # system-boson coupling
@@ -179,6 +183,16 @@ if __name__ == '__main__':
     exp_z = TTNO(basis_tree, Op("sigma_z", "spin"))
     # exp_x = TTNO(basis_tree, Op("sigma_x", "spin"))
     ttns = TTNS(basis_tree)
+
+    # restart dynamic
+    if is_restart:
+        points = [ s for s in os.listdir(restart_folder) if s.endswith('step_ttns.npz')]
+        if len(points) == 0:
+            ttns.load(basis_tree, fname=os.path.join(restart_folder, points[0]))
+            logger.info(f'restart from {points[0]}')
+        else:
+            logger.info('can not find restart file run from step 0 ')
+
     ttns.compress_config = CompressConfig(CompressCriteria.fixed, max_bonddim=Ms)
     ttns = expand_bond_dimension_general(ttns, ttno, ex_mps=None)
     logger.info(f'ttns.bond_dims: {ttns.bond_dims}')
@@ -208,10 +222,7 @@ if __name__ == '__main__':
     else :
         ttns.evolve_config = EvolveConfig(EvolveMethod.tdvp_ps)
     logger.info(f'ttns.evolve_config: {ttns.evolve_config}')
-    # old settings
-    # nsteps = args.nsteps # was 200
-    # 
-    # simulation_time = 10 * Omega
+
     dt: float = 0.1/Omega # 
     logger.info(f'dt: {dt}')
     expectations: List[Union[float, complex]] = []
@@ -224,21 +235,18 @@ if __name__ == '__main__':
     for i in range(nsteps):
         logger.info(f'proceeding step {i}')
         ttns = ttns.evolve(ttno, dt)
-        # if store_all or i%10 ==0:
-        #     dump_file = os.path.join(dump_dir, f'{job_name}_{i}_step_ttns.npz')
-        #     ttns.dump(dump_file)
-        # else:
-        #     if i == nsteps-1:
-        #         dump_file = os.path.join(dump_dir, f'{job_name}_last_step_ttns.npz')
-        #         ttns.dump(dump_file)
+        # store restart file
+        dump_file = os.path.join(dump_dir, f'{job_name}_{i}_step_ttns.npz')
+        ttns.dump(dump_file)
+
+        if f'{job_name}_{i-1}_step_ttns.npz' in os.listdir(dump_dir):
+            os.remove(os.path.join(dump_dir, f'{job_name}_{i-1}_step_ttns.npz'))
+
         # prop calc
         z: Union[float, complex] = ttns.expectation(exp_z)
-        # entropy_1sites = []
-        # for dof in ttns.basis.dof_list:
-        #     entropy_1site: Any = ttns.calc_1dof_entropy(dof)
-        #     # ttns.calc_2dof_entropy()
-        #     entropy_1sites.append(entropy_1sites)     
+    
         if is_calc_1sites_entropy  : 
+            # vdof
             dofs = [f'v_{i}' for i in range(w_eff.shape[0]) if (i+1)%5 ==0 ]
             dofs.append('spin')
             logger.info(f'dofs:, {dofs}')
@@ -250,8 +258,7 @@ if __name__ == '__main__':
             logger.info(f'step {i} entropy_1sites: {entropy_1sites}')
 
         if is_calc_mutual_info:
-            # mutual_infos = {}
-            # entropy_ts = {}
+            # spin-vdof
             dof1 ='spin'
             dofs = [(dof1, f'v_{i}')for i in range(w_eff.shape[0]) if (i+1)%10==0 ]
             rdm_2dof = ttns.calc_2dof_rdm(dofs)
@@ -269,9 +276,9 @@ if __name__ == '__main__':
 
     with open(os.path.join(dump_dir, f'expectations.pickle'), 'wb') as f:
         pickle.dump(expectations, f)
-    if is_calc_1sites_entropy:
-        with open(os.path.join(dump_dir, f'entropy_1sites_traj.pickle'), 'wb') as f:
-            pickle.dump(entropy_1sites_traj, f)
+    # if is_calc_1sites_entropy:
+    #     with open(os.path.join(dump_dir, f'entropy_1sites_traj.pickle'), 'wb') as f:
+    #         pickle.dump(entropy_1sites_traj, f)
     logger.info('expectations')
     logger.info(expectations)
 
