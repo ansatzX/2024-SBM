@@ -313,11 +313,14 @@ def draw_t_S(prefix_folder, dat_dict, key, query_mode: int, nstep=100):
     S = [dat[modes_eff.index(f'v_{query_mode}')] for dat in dats ]
     # w = omgeas_eff[query_index]
     interp_number = nstep
-    x_uniform, singnal_niform = interp_dat(np.linspace(0, 10, interp_number), S, interp_number)
+    dt = 0.1
+    sum_time = dt *nstep
+    # print(f'sum time: {sum_time}')
+    x_uniform, singnal_niform = interp_dat(np.linspace(0, sum_time, interp_number), S, interp_number)
     plt.plot(x_uniform, singnal_niform,'-', label=f'query_mode: {query_mode}, w:{w}')
     plt.title(f't-S*rho: {key} {rho_type}')
     plt.xlabel(f't')
-    plt.xlim(0, 10)
+    plt.xlim(0, sum_time)
     plt.ylabel(f'S')
     plt.legend(loc=2, bbox_to_anchor=(1.0, 1.0))
     # plt.ylim(0, y_lim)
@@ -414,6 +417,7 @@ def fft_analysis(xf, yf, N, plot=False):
 
             amplitude = peaks[peaks.index(sorted_peaks[0])]
             if plot:
+                plt.xlim(0.1, 5)
                 plt.scatter(freq, amplitude, color='red')
                 plt.annotate(text=f'{freq}_{amplitude:02f}', xy=(xf[index], amp[index]), xytext=(xf[index], amp[index]))
                 plt.plot(xf, amp)
@@ -432,7 +436,7 @@ def fft_analysis(xf, yf, N, plot=False):
                 if plot:
                     plt.scatter(freq, amplitude, color='red')
                     plt.annotate(text=f'{freq}_{amplitude:02f}', xy=(xf[index], amp[index]), xytext=(xf[index], amp[index]))
-            plt.xlim(0.1, 5)
+            
 
             # peaks = [fft_amp[index] for index in indexs]
             # index = indexs[peaks.index(max(peaks))]

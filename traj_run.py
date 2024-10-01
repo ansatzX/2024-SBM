@@ -68,7 +68,8 @@ if __name__ == '__main__':
     parser.add_argument("--rho_type", default=0, help="select rho types in discre..", type=int)
     parser.add_argument("--restart", default=0, help="0: n, 1: y", type=int)
     parser.add_argument("--restart_mother_folder", default='.', help="indicate where calc files located", type=str)
-
+    parser.add_argument("--store_rdm_of_query_dofs", default='1', help="whether store rdm when sim run ", type=int)
+    parser.add_argument("--rdm_query_config", default='default.config', help="config file which contains rdm type and which ", type=str)
 
 
 
@@ -186,7 +187,7 @@ if __name__ == '__main__':
 
     # restart dynamic
     if is_restart:
-        points = [ s for s in os.listdir(restart_folder) if s.endswith('step_ttns.npz')]
+        points = sorted([ s for s in os.listdir(restart_folder) if s.endswith('step_ttns.npz')], reverse=False)
         if len(points) == 0:
             ttns.load(basis_tree, fname=os.path.join(restart_folder, points[0]))
             logger.info(f'restart from {points[0]}')
@@ -228,15 +229,24 @@ if __name__ == '__main__':
     expectations: List[Union[float, complex]] = []
     entropy_1sites_traj: List[Dict[Union[int, List], float]] = []
     mutual_info_traj =[]
-    logger.info("ttns.basis.dof_list")
-    logger.info(ttns.basis.dof_list)
-    logger.info("ttns.basis.dof2idx")
-    logger.info(ttns.basis.dof2idx)
+    # logger.info("ttns.basis.dof_list")
+    # logger.info(ttns.basis.dof_list)
+    # logger.info("ttns.basis.dof2idx")
+    # logger.info(ttns.basis.dof2idx)
+    calc_flag = False
     for i in range(nsteps):
         logger.info(f'proceeding step {i}')
+        dump_file = os.path.join(dump_dir, f'{job_name}_{i}_step_ttns.npz')
+        if is_restart:
+            if dump_file == points[0]:
+                calc_flag = True
+        else:
+            calc_flag = True
+        if not calc_flag:
+            continue
         ttns = ttns.evolve(ttno, dt)
         # store restart file
-        dump_file = os.path.join(dump_dir, f'{job_name}_{i}_step_ttns.npz')
+        
         ttns.dump(dump_file)
 
         if f'{job_name}_{i-1}_step_ttns.npz' in os.listdir(dump_dir):
@@ -260,10 +270,13 @@ if __name__ == '__main__':
         if is_calc_mutual_info:
             # spin-vdof
             dof1 ='spin'
-            dofs = [(dof1, f'v_{i}')for i in range(w_eff.shape[0]) if (i+1)%10==0 ]
+            dofs = [(dof1, f'v_{i}')for i in range(w_eff.shape[0]) if (i+1)%5==0 ]
             rdm_2dof = ttns.calc_2dof_rdm(dofs)
             mutual_infos, entropy_tuple = ttns.calc_2dof_mutual_info(dofs, rdm_2dof)
             with open(os.path.join(dump_dir, f'{i:04}_step_mutual_infos.pickle'), 'wb') as f:
+                pickle.dump(mutual_infos, f) 
+
+            with open(os.path.join(dump_dir, f'{i:04}_step_entropy_int.pickle'), 'wb') as f:
                 pickle.dump(mutual_infos, f) 
             # with open(os.path.join(dump_dir, f'{i:04}_step_rdm_2dofs.pickle'), 'wb') as f:
             #     pickle.dump(rdm_2dof, f) 
