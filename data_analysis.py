@@ -1,7 +1,7 @@
 import enum
 import numpy as np
 import os
-from typing import List
+from typing import List, Literal, Tuple
 from enum import Enum
 import pywt
 import pickle
@@ -189,17 +189,22 @@ def translate_param(s, alpha, omega_c, Omega):
 
     return s_reno, alpha_reno, omega_c_reno
 
+def read_job_parameter(job_folder):
+
+    s = float(os.path.basename(job_folder).split('_')[1][1:])
+    alpha = float(os.path.basename(job_folder).split('_')[2][5:])
+
+    Omega = int(os.path.basename(job_folder).split('_')[3][5:])
+    omega_c = int(os.path.basename(job_folder).split('_')[5][1:])
+    nmodes = int(os.path.basename(job_folder).split('_nmodes')[1].split('_')[0])
+    bond_dims = 20
+    td_method = 0
+    rho_type = 0 if 'rho_type' not in os.path.basename(job_folder) else int(os.path.basename(job_folder).split('rho_type_')[1])
+
+    return s, alpha, Omega, omega_c, nmodes, bond_dims, td_method, rho_type
 def draw_w_S(prefix_folder, dat_dict, key, nstep=100) -> None:
  
-    s = float(os.path.basename(prefix_folder).split('_')[1][1:])
-    alpha = float(os.path.basename(prefix_folder).split('_')[2][5:])
-
-    Omega = int(os.path.basename(prefix_folder).split('_')[3][5:])
-    omega_c = int(os.path.basename(prefix_folder).split('_')[5][1:])
-    nmodes = int(os.path.basename(prefix_folder).split('_nmodes')[1].split('_')[0])
-
-    rho_type = 0 if 'rho_type' not in os.path.basename(prefix_folder) else int(os.path.basename(prefix_folder).split('rho_type_')[1])
-
+    s, alpha, Omega, omega_c, nmodes, bond_dims, td_method, rho_type = read_job_parameter(prefix_folder)
     # s_reno, alpha_reno, omega_c_reno = translate_param(s, alpha, omega_c, Omega)
 
     # info_ = read_line(prefix_folder, dat_dict[key])
@@ -210,47 +215,12 @@ def draw_w_S(prefix_folder, dat_dict, key, nstep=100) -> None:
     
     # rho_array = get_rho_array(alpha_reno, s_reno, omega_c_reno, nmodes, rho_type)
     # rho_array_eff: ndarray[Any, dtype[Any]] = np.array([ rho_array[i] for i in range(nmodes) if f'v_{i:03}' in info_[0].keys() ] )
-    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key,  nstep)
+    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key, nstep)
     # query_modes_eff = [ j for j in [ i for i in range(nmodes) if f'v_{i:03}' in modes_eff] if j in query_modes  ]
 
     fig_folder  = f'figs/{key}'# _nmodes{nmodes}_rho_type_{rho_type}'
     print(fig_folder)
     os.makedirs(fig_folder, exist_ok=True)
-
-    # S_ = {}
-    # for i_mode in range(omgeas_eff.shape[0]):
-    #     w = omgeas_eff[i_mode]
-    #     if w < omega_c * Omega:
-    #         S_[i_mode] = [dat[i_mode] for dat in dats ]
-    #         if i_mode in query_modes_eff:
-    #             S_data = S_[i_mode]
-    #             w = omgeas_eff[i_mode]
-    #             plt.plot(range(0,100), S_data,'-', label=f'query_mode:{i_mode}')
-    #             plt.title(f't-S*rho: {key} {rho_type}')
-    #             plt.xlabel(f't')
-    #             plt.xlim(0, 100)
-    #             plt.ylabel(f'S')
-    #             plt.legend()
-    #             plt.savefig(f'{fig_folder}/t-S_rho{rho_type}_query_mode_{i_mode}.png')
- 
-
-    # uncomment this block to gen figs t-S
-    # for i in range(nmodes):
-    #     v_dof = f'v_{i:03}'wawd
-        
-    #     if v_dof in info_[0].keys():
-    #         dat = []
-    #         for i_step in range(100):
-    #             dat.append(info_[i_step][v_dof])
-    #         plt.clf()
-    #         plt.plot(dat)
-    #         plt.title(f't-S: {v_dof}')
-    #         plt.savefig(f'{fig_folder}/t-S_rho{rho_type}_{v_dof}.png')
-    #         plt.clf()
-
-
-
-
 
     y_lim = max([max(dat)for dat in dats])
     for i_step in range(100):
@@ -268,7 +238,7 @@ def draw_w_S(prefix_folder, dat_dict, key, nstep=100) -> None:
 
 
 
-def draw_t_S(prefix_folder, dat_dict, key, query_mode: int, nstep=100):
+def draw_t_S(prefix_folder, dat_dict, key, query_mode: int, nstep=100, dt=0.1):
     """
     --input--
     prefix_folder: output folder of traj_run
@@ -282,19 +252,10 @@ def draw_t_S(prefix_folder, dat_dict, key, query_mode: int, nstep=100):
     amplitude: amplitude of t-S from fft
     phase: phase from fft
     """
-    # s = 0.7
-    # alpha = 0.05
-    s = float(os.path.basename(prefix_folder).split('_')[1][1:])
-    alpha = float(os.path.basename(prefix_folder).split('_')[2][5:])
+    s, alpha, Omega, omega_c, nmodes, bond_dims, td_method, rho_type = read_job_parameter(prefix_folder)
 
-    Omega = int(os.path.basename(prefix_folder).split('_')[3][5:])
-    omega_c = int(os.path.basename(prefix_folder).split('_')[5][1:])
-    nmodes = int(os.path.basename(prefix_folder).split('_nmodes')[1].split('_')[0])
-
-    rho_type = 0 if 'rho_type' not in os.path.basename(prefix_folder) else int(os.path.basename(prefix_folder).split('rho_type_')[1])
-    # pf = os.path.join(prefix_folder, f'traj_s{s:.02f}_alpha{alpha:.02f}_Omega1_omega_c10_nmodes1000_bond_dims20_td_method_0')
-    # key = f's{s:.02f}-alpha{alpha:.02f}'
     omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key, nstep)
+
     if f'v_{query_mode}' not in modes_eff:
         returntuple = ( 0, 0, 0, 0, 0, 0)
         return returntuple
@@ -311,31 +272,39 @@ def draw_t_S(prefix_folder, dat_dict, key, query_mode: int, nstep=100):
     
     # query_index = np.where(omgeas_eff == query_mode)[0][0]
     S = [dat[modes_eff.index(f'v_{query_mode}')] for dat in dats ]
-    # w = omgeas_eff[query_index]
-    interp_number = nstep
-    dt = 0.1
-    sum_time = dt *nstep
-    # print(f'sum time: {sum_time}')
-    x_uniform, singnal_niform = interp_dat(np.linspace(0, sum_time, interp_number), S, interp_number)
+
+    interp_number = nstep * 3
+
+    sum_time = dt * nstep
+
+    x_uniform, singnal_niform = interp_dat(np.linspace(0, sum_time, nstep), S, interp_number)
     plt.plot(x_uniform, singnal_niform,'-', label=f'query_mode: {query_mode}, w:{w}')
     plt.title(f't-S*rho: {key} {rho_type}')
     plt.xlabel(f't')
     plt.xlim(0, sum_time)
     plt.ylabel(f'S')
     plt.legend(loc=2, bbox_to_anchor=(1.0, 1.0))
-    # plt.ylim(0, y_lim)
-    # plt.savefig(f'figs/{key}_nmodes{nmodes}_rho_type_{rho_type}/w-S_nmodes{nmodes}_rho_type{rho_type}_{i_step:03}.png')
-    # plt.clf()
 
-    # xf, yf = do_fft(x_uniform, singnal_niform, interp_number)
     xf, yf = do_cft(x_uniform, singnal_niform, interp_number)
     fft_amp = 2.0/interp_number * np.abs(yf)
-    freq, amplitude, phase = fft_analysis(xf, yf, interp_number)
+    freq, amplitude, phase = fft_analysis(xf, yf, interp_number, plot=False)
 
     returntuple = (w, freq, amplitude, phase, xf, fft_amp)
     return returntuple
 
-def chunk_data(prefix_folder, dat_dict, key, nstep):
+def draw_t_I(prefix_folder, dat_dict, key, query_mode: int, nstep=100):
+    return 0
+
+def show_result_t_I(mother_folder, data_dict, s, alpha, nmodes, rho_type, step_length=1, query_modes=None, nstep=100):# -> tuple[list, list, list]:
+    return 0
+
+def dof_name_gentor_S(index) -> str:
+    return f'v_{index}'
+
+def dof_name_gentor_I(index) -> Tuple[Literal['spin'], str]:
+    return ('spin', f'v_{index}')
+
+def chunk_data(prefix_folder, dat_dict, key, dof_name=dof_name_gentor_S, nstep=100):
     s = float(os.path.basename(prefix_folder).split('_')[1][1:])
     alpha = float(os.path.basename(prefix_folder).split('_')[2][5:])
 
@@ -352,14 +321,14 @@ def chunk_data(prefix_folder, dat_dict, key, nstep):
 
 
     rho_array = get_rho_array(alpha_reno, s_reno, omega_c_reno, nmodes, rho_type)
-    modes_eff = [ f'v_{i}' for i in range(nmodes) if f'v_{i}' in info_[0].keys() ]
+    modes_eff = [ dof_name(i) for i in range(nmodes) if dof_name(i) in info_[0].keys() ]
     omgeas_eff: ndarray[Any, dtype[Any]] = np.array([ omgeas[i] for i in range(nmodes) if f'v_{i}' in info_[0].keys() ] )
     rho_array_eff: ndarray[Any, dtype[Any]] = np.array([ rho_array[i] for i in range(nmodes) if f'v_{i}' in info_[0].keys() ] )
 
     dats = []
     for i_step in range(nstep):
-        # S of specific mode i
-        dat = [ info_[i_step][f'v_{i}'] for i in range(nmodes) if f'v_{i}' in info_[0].keys() ] 
+        # of specific mode i
+        dat = [ info_[i_step][dof_name(i)] for i in range(nmodes) if dof_name(i) in info_[0].keys() ] 
 
         dats.append(dat*rho_array_eff)
     return omgeas_eff, rho_array_eff, modes_eff, dats
@@ -486,18 +455,16 @@ def wavelet_denoising(signal):
     return reconstructed_signal
 
 
-def show_result_t_S(mother_folder, data_dict, s, alpha, nmodes, rho_type, step_length=1, query_modes=None, nstep=100):# -> tuple[list, list, list]:
+def show_result_t_S(mother_folder, data_dict, s, alpha, Omega, omega_c, nmodes=1000, bond_dims=20, td_method=0, rho_type=0, step_length=1, query_modes=None, nstep=100, dt=0.1):# -> tuple[list, list, list]:
     imodes = []
     ws = []
     freqs = []
     amps = []
     xfs = []
     fft_amps = []
-    # s = 0.7
-    # alpha = 0.05
-    # nmodes = 1000
-    # rho_type = 0
-    pf = os.path.join(mother_folder, f'traj_s{s:.02f}_alpha{alpha:.02f}_Omega1_omega_c10_nmodes{nmodes}_bond_dims20_td_method_0_rho_type_{rho_type}')
+
+    job_name = f"traj_s{s:.2f}_alpha{alpha:.2f}_Omega{Omega}_omega_c{omega_c}_nmodes{nmodes}_bond_dims{bond_dims}_td_method_{td_method}_rho_type_{rho_type}"  ####################
+    pf = os.path.join(mother_folder, job_name)
 
     # key = f's{s:.02f}-alpha{alpha:.02f}'
     key = f"s{s:.02f}-alpha{alpha:.02f}-nmodes{nmodes}-rho{rho_type}"
@@ -507,7 +474,7 @@ def show_result_t_S(mother_folder, data_dict, s, alpha, nmodes, rho_type, step_l
         draw_lst = range(0, nmodes, step_length)
     for i in draw_lst:
         query_mode = i
-        w, freq, amplitude, phase, xf, fft_amp = draw_t_S(pf, data_dict, key, query_mode, nstep)
+        w, freq, amplitude, phase, xf, fft_amp = draw_t_S(pf, data_dict, key, query_mode, nstep, dt)
         if w != 0 :
             imodes.append(query_mode)
             ws.append(w)
@@ -579,18 +546,15 @@ def show_w_freqs1(key, ws, freqs, imodes, xfs, fft_amps):
 
 
 
-def get_data_of_vodf(mother_folder, data_dict, s, alpha, nmodes, rho_type, idof , nsteps = 100):
-    # s = 0.7
-    # alpha = 0.05
-    # nmodes = 1000
-    # rho_type = 0
-    
-    pf = os.path.join(mother_folder, f'traj_s{s:.02f}_alpha{alpha:.02f}_Omega1_omega_c10_nmodes{nmodes}_bond_dims20_td_method_0_rho_type_{rho_type}')
+def get_data_of_dof(mother_folder, data_dict, idof, s, alpha, Omega, omega_c, nmodes=1000, bond_dims=20, td_method=0, rho_type=0, dof_name=dof_name_gentor_S, nsteps = 100):
+
+    job_name = f"traj_s{s:.2f}_alpha{alpha:.2f}_Omega{Omega}_omega_c{omega_c}_nmodes{nmodes}_bond_dims{bond_dims}_td_method_{td_method}_rho_type_{rho_type}"  ####################
+    pf = os.path.join(mother_folder, job_name)
 
     key = f"s{s:.02f}-alpha{alpha:.02f}-nmodes{nmodes}-rho{rho_type}" 
-    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(pf, data_dict, key, nsteps)
+    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(pf, data_dict, key, dof_name, nsteps)
     # w = omgeas_eff[modes_eff.index(f'v_{idof}')]
-    signal = [ dats[i][[modes_eff.index(f'v_{idof}')]][0] for i in range(nsteps) ]
+    signal = [ dats[i][[modes_eff.index(dof_name(idof))]][0] for i in range(nsteps) ]
 
     return omgeas_eff, modes_eff, signal
 
@@ -605,21 +569,21 @@ def average_T(time_data, dt_indexs):
     return np.mean(Ts)
 
 
-def get_signal_freq(mother_folder, data_dict, s, alpha, nmodes, rho_type, nsteps, imode, plot=False):
-    # count period
-    omgeas_eff, modes_eff, signal= get_data_of_vodf(mother_folder=mother_folder, data_dict=data_dict, s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, idof=imode, nsteps=nsteps)
+def get_signal_freq(mother_folder, data_dict, s, alpha, nmodes, rho_type, nsteps, imode, dof_name=dof_name_gentor_S, dt=0.1, plot=False):
 
-    x_uniform, y_uniform = interp_dat(np.linspace(0, int(nsteps/10), len(signal)), np.array(signal), 10 * len(signal), kind='quadratic')
+    # count period
+    omgeas_eff, modes_eff, signal= get_data_of_dof(mother_folder=mother_folder, data_dict=data_dict, s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, idof=imode, dof_name=dof_name, nsteps=nsteps)
+    sum_time = dt * nsteps
+    x_uniform, y_uniform = interp_dat(np.linspace(0, sum_time, len(signal)), np.array(signal), 10 * nsteps, kind='quadratic')
     y_deno = wavelet_denoising(y_uniform)
 
-    time_data= np.linspace(0, int(nsteps/10), 10 * len(signal))
 
     dt_indexs = scipy.signal.argrelmax(y_deno)[0]
     if plot:
-        plt.plot(y_deno, label=f'v_{imode}')
+        plt.plot(y_deno, label=dof_name(imode))
         plt.legend(loc=2, bbox_to_anchor=(1.0, 1.0))
-    freq = 1/ average_T(time_data, dt_indexs)
-    iw = modes_eff.index(f'v_{imode}')
+    freq = 1/ average_T(x_uniform, dt_indexs)
+    iw = modes_eff.index(dof_name(imode))
     w = omgeas_eff[iw]
     return w, freq
 
@@ -632,22 +596,23 @@ def average_Amp(signal, dt_indexs_max, dt_indexs_min):
         Amps.append(Amp)
     return np.mean(Amp)
 
-def get_signal_amp(mother_folder, data_dict, s, alpha, nmodes, rho_type, nsteps, imode, plot=False):
+def get_signal_amp(mother_folder, data_dict, s, alpha, nmodes, rho_type, nsteps, imode, dof_name=dof_name_gentor_S, dt=0.1, plot=False):
+    
     # count period
-    omgeas_eff, modes_eff, signal= get_data_of_vodf(mother_folder=mother_folder, data_dict=data_dict, s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, idof=imode, nsteps=nsteps)
-
-    x_uniform, y_uniform = interp_dat(np.linspace(0, int(nsteps/10), len(signal)), np.array(signal), 10 * len(signal), kind='quadratic')
+    omgeas_eff, modes_eff, signal= get_data_of_dof(mother_folder=mother_folder, data_dict=data_dict, s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, idof=imode, dof_name=dof_name, nsteps=nsteps)
+    sum_time = dt * nsteps
+    x_uniform, y_uniform = interp_dat(np.linspace(0, sum_time, len(signal)), np.array(signal), 10 * nsteps, kind='quadratic')
     y_deno = wavelet_denoising(y_uniform)
 
-    time_data= np.linspace(0, int(nsteps/10), 10 * len(signal))
+    # time_data= np.linspace(0, int(nsteps/10), 10 * len(signal))
 
     dt_indexs_0 = scipy.signal.argrelmax(y_deno)[0]
     dt_indexs_1 = scipy.signal.argrelmin(y_deno)[0]
     if plot:
-        plt.plot(y_deno, label=f'v_{imode}')
+        plt.plot(y_deno, label=dof_name(imode))
         plt.legend(loc=2, bbox_to_anchor=(1.0, 1.0))
     amp = average_Amp(y_deno, dt_indexs_0, dt_indexs_1)
-    iw = modes_eff.index(f'v_{imode}')
+    iw = modes_eff.index(dof_name(imode))
     w = omgeas_eff[iw]
     return w, amp
 
