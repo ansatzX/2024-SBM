@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import List, Dict, Tuple, Union, Callable, Any
 from ctypes import set_errno
 import sys
@@ -13,7 +14,7 @@ import argparse
 import numpy as np
 from renormalizer.utils.log import package_logger
 import pickle
-
+import json
 
 
 class rho_ohmic(OhmicSDF):
@@ -49,6 +50,33 @@ class rho_ohmic(OhmicSDF):
 
         return omega_value, c_j2
     
+def read_query_config(file):
+    with open (file, 'r') as f:
+        text = f.read()
+    query_config = json.loads(text)
+
+def check_onestep(timestamps, current_time, future_time, rtol=1e-7, atol=0):
+
+
+    static_steps = []
+    token_dict = {}
+    for key in timestamps:
+        times = timestamps[key]
+        a = times  < future_time
+        b = times  > current_time 
+        token_times = times[a & b]
+        if len(a) > 0:
+            # print(key)
+            indice = np.where(times[len(a)-1] == times)[0][0]
+            if indice < len(times) -1:
+                is_on_staric_step = np._core.numeric.isclose(future_time, times[indice+1], rtol=rtol, atol=atol,
+                                           equal_nan=True)
+                if is_on_staric_step:
+                    static_steps.append(key)
+        if len(token_times) != 0 :
+            token_dict[key] = token_times
+    return token_dict, static_steps
+
 if __name__ == '__main__':
     # argpaser
     # 
@@ -68,8 +96,8 @@ if __name__ == '__main__':
     parser.add_argument("--rho_type", default=0, help="select rho types in discre..", type=int)
     parser.add_argument("--restart", default=0, help="0: n, 1: y", type=int)
     parser.add_argument("--restart_mother_folder", default='.', help="indicate where calc files located", type=str)
-    parser.add_argument("--store_rdm_of_query_dofs", default='1', help="whether store rdm when sim run ", type=int)
-    parser.add_argument("--rdm_query_config", default='default.config', help="config file which contains rdm type and which ", type=str)
+    parser.add_argument("--calc_dynamic_steps", default='0', help="whether preform dynamic steps between static steps ", type=int)
+    parser.add_argument("--rdm_query_config_file", default='default.config', help="config file of dynamic steps: rdm ", type=str)
 
 
 
@@ -94,6 +122,8 @@ if __name__ == '__main__':
     rho_type  = args.rho_type
     is_restart = args.restart
     restart_mother_folder = args.restart_mother_folder
+    is_calc_dynamic_steps = args.calc_dynamic_steps
+    rdm_query_config_file = args.rdm_query_config_file
     # parm translate
     s_reno = s
     alpha_reno = 4*alpha # tranlate from wang1 to PRL
@@ -115,6 +145,9 @@ if __name__ == '__main__':
 
     Delta = Omega * 0.5
     eps = 0
+    if is_calc_dynamic_steps :
+        timestamps = read_query_config(rdm_query_config_file)
+
     # call a sdf
     sdf = rho_ohmic(alpha_reno, omega_c_reno, s_reno, rho_type)
 
@@ -234,6 +267,8 @@ if __name__ == '__main__':
     # logger.info("ttns.basis.dof2idx")
     # logger.info(ttns.basis.dof2idx)
     calc_flag = False
+
+    # step 0 is not init state of dynamic
     for i in range(nsteps):
         logger.info(f'proceeding step {i}')
         dump_file = os.path.join(dump_dir, f'{job_name}_{i}_step_ttns.npz')
@@ -285,7 +320,25 @@ if __name__ == '__main__':
 
         expectations.append(z)
         logger.info(f'step {i} z: {z}')
+
+        # dynamic step
         
+        current_time = i * dt
+        future_time = current_time + dt
+        token_dict, static_step_dofs = check_onestep(timestamps, current_time, future_time, rtol=1e-7, atol=0)
+
+        if len(token_dict) != 0 :
+            ttns_dynamic = deepcopy(ttns)
+            pass
+        if len(static_step_dofs) != 0:
+            static_ttns = ttns.evolve(ttno, dt)
+            if isinstance(static_step_dofs[0], str):
+                rdm_dof_dict = static_ttns.calc_1dof_rdm(static_step_dofs)
+            elif isinstance(static_step_dofs[0], tuple):
+                rdm_dof_dict = static_ttns.calc_2dof_rdm(static_step_dofs)
+            with open(os.path.join(dump_dir, ), 'wb') as f:
+                pickle.dump(expectations, f'{i:04}_step_static_rdm.pickle')
+
 
     with open(os.path.join(dump_dir, f'expectations.pickle'), 'wb') as f:
         pickle.dump(expectations, f)
