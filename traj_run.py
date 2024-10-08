@@ -335,17 +335,19 @@ if __name__ == '__main__':
                 # less than dt just evolve  from current time
                 dynamic_rdm_dof_dict = {}
                 for key in token_dict:
+                    # enum all dofs 
                     if key not in list(dynamic_rdm_dof_dict.keys()):
                         dynamic_rdm_dof_dict[key] = []
+                    # enum all time in one dof
                     time_array = token_dict[key]
                     for i_time in range(len(time_array)):
                         time = time_array[i_time]
                         evolve_time = time - current_time
                         static_ttns = ttns.evolve(ttno, evolve_time)
                         if isinstance(key, str):
-                            rdm_dof_dict = static_ttns.calc_1dof_rdm(static_step_dofs)
+                            rdm_dof_dict = static_ttns.calc_1dof_rdm(key)
                         elif isinstance(key, tuple):
-                            rdm_dof_dict = static_ttns.calc_2dof_rdm(static_step_dofs)
+                            rdm_dof_dict = static_ttns.calc_2dof_rdm(key)
                         dynamic_rdm_dof_dict[key].append((time, rdm_dof_dict))
 
                 with open(os.path.join(dump_dir, f'{i:04}_step_dynamic_rdm.pickle'), 'wb') as f:
