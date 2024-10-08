@@ -767,16 +767,36 @@ def get_freq_cft_xf_yf(mother_folder, data_dict,\
 
 
 
-def get_timestamp(mother_folder, data_dict,\
-                          s, alpha, nmodes=nmodes, rho_type=0, nsteps=100, dt=0.1, dof_name=dof_name_gentor_S):
+def get_min_timestamp(mother_folder, data_dict,\
+                          s, alpha, draw_ids, nmodes=1000, rho_type=0, nsteps=100, dt=0.1, dof_name=dof_name_gentor_S):
+    # min
     timpstamps_of_query_dofs = {}
     for idof in draw_ids:
-        omgeas_eff, modes_eff, signal= get_data_of_dof(mother_folder=S_folder, data_dict=vn_entropy_1site_all_lines,\
-                          s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, nsteps=nsteps, dof_name=dof_name_gentor_S,
+        omgeas_eff, modes_eff, signal= get_data_of_dof(mother_folder=mother_folder, data_dict=data_dict,\
+                          s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, nsteps=nsteps, dof_name=dof_name,
                           idof=idof)
+        x_uniform, y_uniform = interp_dat(np.linspace(0, nsteps*dt, nsteps), signal, nsteps*10)
+        clean_signal = wavelet_denoising(y_uniform)
+        min_indexs = scipy.signal.argrelmin(clean_signal)[0]
+        track_points = min_indexs * dt / 10
+        timpstamps_of_query_dofs[dof_name(idof)] =  track_points
+    return timpstamps_of_query_dofs
 
-        clean_signal = wavelet_denoising(signal)
-        min_indexs = scipy.signal.argrelmin(clean_signal, mode='wrap')[0]
-        track_points = min_indexs *dt
-        timpstamps_of_query_dofs[dof_name_gentor_S(idof)] =  track_points
+def get_near_zero_timestamp(mother_folder, data_dict,\
+                          s, alpha, draw_ids, nmodes=1000, rho_type=0, nsteps=100, dt=0.1, dof_name=dof_name_gentor_S):
+    # min
+    timpstamps_of_query_dofs = {}
+    for idof in draw_ids:
+        omgeas_eff, modes_eff, signal= get_data_of_dof(mother_folder=mother_folder, data_dict=data_dict,\
+                          s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, nsteps=nsteps, dof_name=dof_name,
+                          idof=idof)
+        x_uniform, y_uniform = interp_dat(np.linspace(0, nsteps*dt, nsteps), signal, nsteps*10)
+        clean_signal = wavelet_denoising(y_uniform)
+        # min_indexs = scipy.signal.argrelmin(clean_signal)[0]
+        # it is hard to set tol 
+        near_zero_res = np.isclose(clean_signal, np.zeros(clean_signal.shape), rtol=0, atol=1e-2,
+                                           equal_nan=True)
+        near_zero_indexs = np.where(near_zero_res == True)[0]
+        track_points = near_zero_indexs * dt / 10
+        timpstamps_of_query_dofs[dof_name(idof)] =  track_points
     return timpstamps_of_query_dofs

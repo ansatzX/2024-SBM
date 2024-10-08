@@ -51,12 +51,11 @@ class rho_ohmic(OhmicSDF):
         return omega_value, c_j2
     
 def read_query_config(file):
-    with open (file, 'r') as f:
-        text = f.read()
-    query_config = json.loads(text)
+    with open (file, 'rb') as f:
+        dat = pickle.load(f)
+    return dat
 
-def check_onestep(timestamps, current_time, future_time, rtol=1e-7, atol=0):
-
+def check_onestep(timestamps, current_time, future_time, rtol=0, atol=1e-2):
 
     static_steps = []
     token_dict = {}
@@ -66,10 +65,10 @@ def check_onestep(timestamps, current_time, future_time, rtol=1e-7, atol=0):
         b = times  > current_time 
         token_times = times[a & b]
         if len(a) > 0:
-            # print(key)
+            
             indice = np.where(times[len(a)-1] == times)[0][0]
             if indice < len(times) -1:
-                is_on_staric_step = np._core.numeric.isclose(future_time, times[indice+1], rtol=rtol, atol=atol,
+                is_on_staric_step = np.isclose(future_time, times[indice+1], rtol=rtol, atol=atol,
                                            equal_nan=True)
                 if is_on_staric_step:
                     static_steps.append(key)
@@ -97,7 +96,7 @@ if __name__ == '__main__':
     parser.add_argument("--restart", default=0, help="0: n, 1: y", type=int)
     parser.add_argument("--restart_mother_folder", default='.', help="indicate where calc files located", type=str)
     parser.add_argument("--calc_dynamic_steps", default='0', help="whether preform dynamic steps between static steps ", type=int)
-    parser.add_argument("--rdm_query_config_file", default='default.config', help="config file of dynamic steps: rdm ", type=str)
+    parser.add_argument("--rdm_query_config_file", default='default_config.pickle', help="config file of dynamic steps: rdm ", type=str)
 
 
 
@@ -147,6 +146,8 @@ if __name__ == '__main__':
     eps = 0
     if is_calc_dynamic_steps :
         timestamps = read_query_config(rdm_query_config_file)
+        logger.info('calc dynamic steps')
+        logger.info(timestamps)
 
     # call a sdf
     sdf = rho_ohmic(alpha_reno, omega_c_reno, s_reno, rho_type)
@@ -322,22 +323,44 @@ if __name__ == '__main__':
         logger.info(f'step {i} z: {z}')
 
         # dynamic step
-        
-        current_time = i * dt
-        future_time = current_time + dt
-        token_dict, static_step_dofs = check_onestep(timestamps, current_time, future_time, rtol=1e-7, atol=0)
+        if is_calc_dynamic_steps :
+            current_time = i * dt
+            future_time = current_time + dt
+            token_dict, static_step_dofs = check_onestep(timestamps, current_time, future_time, rtol=1e-7, atol=0)
 
-        if len(token_dict) != 0 :
-            ttns_dynamic = deepcopy(ttns)
-            pass
-        if len(static_step_dofs) != 0:
-            static_ttns = ttns.evolve(ttno, dt)
-            if isinstance(static_step_dofs[0], str):
-                rdm_dof_dict = static_ttns.calc_1dof_rdm(static_step_dofs)
-            elif isinstance(static_step_dofs[0], tuple):
-                rdm_dof_dict = static_ttns.calc_2dof_rdm(static_step_dofs)
-            with open(os.path.join(dump_dir, ), 'wb') as f:
-                pickle.dump(expectations, f'{i:04}_step_static_rdm.pickle')
+            if len(token_dict) != 0 :
+                ttns_dynamic = deepcopy(ttns)
+                logger.info(f'wokring on dynamic step {i}')
+                # do not sim by time 
+                # less than dt just evolve  from current time
+                dynamic_rdm_dof_dict = {}
+                for key in token_dict:
+                    if key not in list(dynamic_rdm_dof_dict.keys()):
+                        dynamic_rdm_dof_dict[key] = []
+                    time_array = token_dict[key]
+                    for i_time in range(len(time_array)):
+                        time = time_array[i_time]
+                        evolve_time = time - current_time
+                        static_ttns = ttns.evolve(ttno, evolve_time)
+                        if isinstance(key, str):
+                            rdm_dof_dict = static_ttns.calc_1dof_rdm(static_step_dofs)
+                        elif isinstance(key, tuple):
+                            rdm_dof_dict = static_ttns.calc_2dof_rdm(static_step_dofs)
+                        dynamic_rdm_dof_dict[key].append((time, rdm_dof_dict))
+
+                with open(os.path.join(dump_dir, f'{i:04}_step_dynamic_rdm.pickle'), 'wb') as f:
+                    pickle.dump(dynamic_rdm_dof_dict, f)
+
+            if len(static_step_dofs) != 0:
+                # rdm_dof_dict = {}
+                logger.info(f'wokring on static step {i}')
+                static_ttns = ttns.evolve(ttno, dt)
+                if isinstance(static_step_dofs[0], str):
+                    rdm_dof_dict = static_ttns.calc_1dof_rdm(static_step_dofs)
+                elif isinstance(static_step_dofs[0], tuple):
+                    rdm_dof_dict = static_ttns.calc_2dof_rdm(static_step_dofs)
+                with open(os.path.join(dump_dir, f'{i:04}_step_static_rdm.pickle'), 'wb') as f:
+                    pickle.dump(rdm_dof_dict, f)
 
 
     with open(os.path.join(dump_dir, f'expectations.pickle'), 'wb') as f:
