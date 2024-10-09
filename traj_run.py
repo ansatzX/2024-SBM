@@ -55,26 +55,47 @@ def read_query_config(file):
         dat = pickle.load(f)
     return dat
 
-def check_onestep(timestamps, current_time, future_time, rtol=0, atol=1e-2):
+def check_onestep(timestamps, current_time, future_time, dt=0.1, dynamic_num=10):
 
     static_steps = []
     token_dict = {}
+    dynamic_steps = {}
+    dynamic_step_legnth = dt/dynamic_num
+    rtol = 0
+    atol= dt / dynamic_num
     for key in timestamps:
         times = timestamps[key]
         a = times  < future_time
         b = times  > current_time 
         token_times = times[a & b]
-        if len(a) > 0:
+        is_on_static_step = False
+        if len(token_times) > 0:
             
-            indice = np.where(times[len(a)-1] == times)[0][0]
+            indice = np.where(token_times[-1] == times)[0][0]
             if indice < len(times) -1:
-                is_on_staric_step = np.isclose(future_time, times[indice+1], rtol=rtol, atol=atol,
+                is_on_static_step = np.isclose(future_time, times[indice], rtol=rtol, atol=atol,
                                            equal_nan=True)
-                if is_on_staric_step:
-                    static_steps.append(key)
-        if len(token_times) != 0 :
-            token_dict[key] = token_times
-    return token_dict, static_steps
+                if is_on_static_step:
+                    static_steps.append((key, token_times[-1]))
+
+            if is_on_static_step:
+                token_dict[key] = token_times[:-1]
+            else:
+                token_dict[key] = token_times
+
+        for i in range(1, dynamic_num):
+            dynamic_time = current_time + dynamic_step_legnth * i
+            dynamic_dofs = []
+            for key in token_dict:
+                token_times = token_dict[key]
+                # evolve_times = token_times - current_time
+                token_res = np.isclose(token_times, np.array([dynamic_time for _ in range(len(token_times)) ]), rtol=rtol, atol=atol,
+                                           equal_nan=True)
+                if True in token_res:
+                    dynamic_dofs.append(key)
+            if len(dynamic_dofs) > 0:
+                dynamic_steps[i] = dynamic_dofs
+    return dynamic_steps, static_steps
 
 if __name__ == '__main__':
     # argpaser
@@ -268,6 +289,7 @@ if __name__ == '__main__':
     # logger.info("ttns.basis.dof2idx")
     # logger.info(ttns.basis.dof2idx)
     calc_flag = False
+    is_static_evolve = True
 
     # step 0 is not init state of dynamic
     for i in range(nsteps):
@@ -280,9 +302,15 @@ if __name__ == '__main__':
             calc_flag = True
         if not calc_flag:
             continue
-        ttns = ttns.evolve(ttno, dt)
+        if is_calc_dynamic_steps:
+            if not is_static_evolve:
+                ttns = ttns.evolve(ttno, dt)
+            else:
+                ttns = static_ttns
+        else:
+            ttns = ttns.evolve(ttno, dt)
         # store restart file
-        
+
         ttns.dump(dump_file)
 
         if f'{job_name}_{i-1}_step_ttns.npz' in os.listdir(dump_dir):
@@ -326,32 +354,40 @@ if __name__ == '__main__':
         if is_calc_dynamic_steps :
             current_time = i * dt
             future_time = current_time + dt
-            token_dict, static_step_dofs = check_onestep(timestamps, current_time, future_time, rtol=1e-7, atol=0)
+            dynamic_steps, static_step_dofs = check_onestep(timestamps, current_time, future_time, dt=dt)
 
-            if len(token_dict) != 0 :
+            if len(dynamic_steps) != 0 :
                 ttns_dynamic = deepcopy(ttns)
                 logger.info(f'wokring on dynamic step {i}')
                 # do not sim by time 
-                # less than dt just evolve  from current time
-                dynamic_rdm_dof_dict = {}
-                for key in token_dict:
-                    # enum all dofs 
-                    if key not in list(dynamic_rdm_dof_dict.keys()):
-                        dynamic_rdm_dof_dict[key] = []
-                    # enum all time in one dof
-                    time_array = token_dict[key]
-                    for i_time in range(len(time_array)):
-                        time = time_array[i_time]
-                        evolve_time = time - current_time
-                        static_ttns = ttns.evolve(ttno, evolve_time)
-                        if isinstance(key, str):
-                            rdm_dof_dict = static_ttns.calc_1dof_rdm(key)
-                        elif isinstance(key, tuple):
-                            rdm_dof_dict = static_ttns.calc_2dof_rdm(key)
-                        dynamic_rdm_dof_dict[key].append((time, rdm_dof_dict))
+                # less than dt just evolve from current time
+                dynamic_rdm_lst = []
+                for key in dynamic_steps:
+
+                    # dynamic_rdm_dof_dict[key] = []
+                    dofs = dynamic_steps[key]
+                    # time_array = token_dict[key]
+                    dynamic_istep = key
+                    time = current_time + i * dt * 0.1
+                    evolve_time = i * dt * 0.1
+                    dynamic_ttns = ttns.evolve(ttno, evolve_time)
+                    if isinstance(key, str):
+                        rdm_dof_dict = static_ttns.calc_1dof_rdm(dofs)
+                    elif isinstance(key, tuple):
+                        rdm_dof_dict = static_ttns.calc_2dof_rdm(dofs)
+                    dynamic_rdm_lst.append((time, rdm_dof_dict))
+                    # for i_time in range(len(time_array)):
+                    #     time = time_array[i_time]
+                    #     evolve_time = time - current_time
+                    #     static_ttns = ttns.evolve(ttno, evolve_time)
+                    #     if isinstance(key, str):
+                    #         rdm_dof_dict = static_ttns.calc_1dof_rdm(key)
+                    #     elif isinstance(key, tuple):
+                    #         rdm_dof_dict = static_ttns.calc_2dof_rdm(key)
+                    #     dynamic_rdm_dof_dict[key].append((time, rdm_dof_dict))
 
                 with open(os.path.join(dump_dir, f'{i:04}_step_dynamic_rdm.pickle'), 'wb') as f:
-                    pickle.dump(dynamic_rdm_dof_dict, f)
+                    pickle.dump(dynamic_rdm_lst, f)
 
             if len(static_step_dofs) != 0:
                 # rdm_dof_dict = {}
@@ -362,7 +398,8 @@ if __name__ == '__main__':
                 elif isinstance(static_step_dofs[0], tuple):
                     rdm_dof_dict = static_ttns.calc_2dof_rdm(static_step_dofs)
                 with open(os.path.join(dump_dir, f'{i:04}_step_static_rdm.pickle'), 'wb') as f:
-                    pickle.dump(rdm_dof_dict, f)
+                    pickle.dump([(future_time, rdm_dof_dict)], f)
+                is_static_evolve = True
 
 
     with open(os.path.join(dump_dir, f'expectations.pickle'), 'wb') as f:
