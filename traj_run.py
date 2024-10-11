@@ -76,7 +76,7 @@ def check_onestep(timestamps, current_time, future_time, dt=0.1, dynamic_num=10)
                 is_on_static_step = np.isclose(future_time, times[indice], rtol=rtol, atol=atol,
                                            equal_nan=True)
                 if is_on_static_step:
-                    static_steps.append((key, token_times[-1]))
+                    static_steps.append(key)
 
             if is_on_static_step:
                 token_dict[key] = token_times[:-1]
@@ -117,6 +117,7 @@ if __name__ == '__main__':
     parser.add_argument("--restart", default=0, help="0: n, 1: y", type=int)
     parser.add_argument("--restart_mother_folder", default='.', help="indicate where calc files located", type=str)
     parser.add_argument("--calc_dynamic_steps", default='0', help="whether preform dynamic steps between static steps ", type=int)
+    parser.add_argument("--dynamic_nsteps", default='1', help="how many dynamic steps between static steps ", type=int)
     parser.add_argument("--rdm_query_config_file", default='default_config.pickle', help="config file of dynamic steps: rdm ", type=str)
 
 
@@ -144,6 +145,7 @@ if __name__ == '__main__':
     restart_mother_folder = args.restart_mother_folder
     is_calc_dynamic_steps = args.calc_dynamic_steps
     rdm_query_config_file = args.rdm_query_config_file
+    dynamic_nsteps = args.dynamic_nsteps
     # parm translate
     s_reno = s
     alpha_reno = 4*alpha # tranlate from wang1 to PRL
@@ -289,7 +291,7 @@ if __name__ == '__main__':
     # logger.info("ttns.basis.dof2idx")
     # logger.info(ttns.basis.dof2idx)
     calc_flag = False
-    is_static_evolve = True
+    is_static_evolve = False
 
     # step 0 is not init state of dynamic
     for i in range(nsteps):
@@ -303,10 +305,10 @@ if __name__ == '__main__':
         if not calc_flag:
             continue
         if is_calc_dynamic_steps:
-            if not is_static_evolve:
-                ttns = ttns.evolve(ttno, dt)
-            else:
+            if is_static_evolve:
                 ttns = static_ttns
+            else:
+                ttns = ttns.evolve(ttno, dt)
         else:
             ttns = ttns.evolve(ttno, dt)
         # store restart file
@@ -354,7 +356,7 @@ if __name__ == '__main__':
         if is_calc_dynamic_steps :
             current_time = i * dt
             future_time = current_time + dt
-            dynamic_steps, static_step_dofs = check_onestep(timestamps, current_time, future_time, dt=dt)
+            dynamic_steps, static_step_dofs = check_onestep(timestamps, current_time, future_time, dt=dt, dynamic_num=dynamic_nsteps)
 
             if len(dynamic_steps) != 0 :
                 ttns_dynamic = deepcopy(ttns)
@@ -371,9 +373,9 @@ if __name__ == '__main__':
                     time = current_time + i * dt * 0.1
                     evolve_time = i * dt * 0.1
                     dynamic_ttns = ttns.evolve(ttno, evolve_time)
-                    if isinstance(key, str):
+                    if isinstance(dofs[0], str):
                         rdm_dof_dict = static_ttns.calc_1dof_rdm(dofs)
-                    elif isinstance(key, tuple):
+                    elif isinstance(dofs[0], tuple):
                         rdm_dof_dict = static_ttns.calc_2dof_rdm(dofs)
                     dynamic_rdm_lst.append((time, rdm_dof_dict))
                     # for i_time in range(len(time_array)):
@@ -400,7 +402,8 @@ if __name__ == '__main__':
                 with open(os.path.join(dump_dir, f'{i:04}_step_static_rdm.pickle'), 'wb') as f:
                     pickle.dump([(future_time, rdm_dof_dict)], f)
                 is_static_evolve = True
-
+            else:
+                is_static_evolve = False
 
     with open(os.path.join(dump_dir, f'expectations.pickle'), 'wb') as f:
         pickle.dump(expectations, f)
