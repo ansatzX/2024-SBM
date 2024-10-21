@@ -18,7 +18,8 @@ from scipy.optimize import curve_fit
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
 # import pywt
-
+atol =1e-5
+rtol =1e-5
 def num_monotonic(p0: float, p1: float, p2: float) -> int :
     """
     filed 3
@@ -34,13 +35,13 @@ def num_monotonic(p0: float, p1: float, p2: float) -> int :
 
     sorted_ascend: List[float] = sorted([p0, p1, p2])
 
-    if sorted_ascend[0] == p2:
+    if np.allclose(sorted_ascend[0], p2, atol=atol, rtol=rtol) and not np.allclose(sorted_ascend[2], p0, atol=atol, rtol=rtol):
         return 3
-    elif sorted_ascend[2] == p2:
+    elif np.allclose(sorted_ascend[2], p2, atol=atol, rtol=rtol) and not np.allclose(sorted_ascend[0], p0, atol=atol, rtol=rtol):
         return 2
-    elif sorted_ascend[0] == p0 and sorted_ascend[2] == p2:
+    elif np.allclose(sorted_ascend[0], p0, atol=atol, rtol=rtol) and np.allclose(sorted_ascend[2], p2, atol=atol, rtol=rtol):
         return 0
-    elif sorted_ascend[0] == p2 and sorted_ascend[2] == p0:
+    elif np.allclose(sorted_ascend[0], p2, atol=atol, rtol=rtol) and np.allclose(sorted_ascend[2], p0, atol=atol, rtol=rtol):
         return 1
     
 def line_monotonic_detect(data: List[float]) -> List[int]:
@@ -49,20 +50,28 @@ def line_monotonic_detect(data: List[float]) -> List[int]:
     1: decend
     2: non monotonic peak
     3: non monotonic valley
+    4: no change 
     '''
     if data[0] < data[1]:
         is_monotonic_results = [0]
     else: # can not be same
         is_monotonic_results = [1]
-
+    # tol =1e-4
     for id in range(1, len(data)-1):
         result: int = num_monotonic(data[id-1], data[id], data[id+1])
-        is_monotonic_results.append(result)
+        if np.allclose(data[id+1], data[id-1], atol=atol, rtol=rtol):
+            is_monotonic_results.append(4)
+        else:
+            is_monotonic_results.append(result)
 
-    if data[len(data)-2] < data[len(data)-1]:
-        is_monotonic_results.append(0)
+     
+    if not np.allclose(data[len(data)-1], data[len(data)-2], atol=atol, rtol=rtol):
+        if data[len(data)-2] < data[len(data)-1]:
+            is_monotonic_results.append(0)
+        else:
+            is_monotonic_results.append(1)
     else:
-        is_monotonic_results.append(1)
+        is_monotonic_results.append(4)
 
     return is_monotonic_results
 
@@ -114,22 +123,44 @@ def line_classify(data: np.ndarray) -> int:
     #     if len(period) > 2:
     #         pass
 
-    max_, _ = scipy.signal.find_peaks(data)
-    min_, _ = scipy.signal.find_peaks(-data)
+    # max_, _ = scipy.signal.find_peaks(data)
+    # min_, _ = scipy.signal.find_peaks(-data)
+    max_ = scipy.signal.argrelmax(data)[0]
+    min_ = scipy.signal.argrelmin(data)[0]
+    # find true max min 
+    # tol = 1e-4
+    if min_.__len__() > 0 and max_.__len__() > 0 :
+        true_max = []
+        true_min = []
+        for i_max in range(len(max_)):
+            if i_max < len(min_):
+                max_indice = max_[i_max]
+                min_indice = min_[i_max]
+                dat_max = data[max_indice]
+                dat_min = data[min_indice]
+                if not np.allclose(dat_max, dat_min, atol=atol, rtol=rtol):
+                    true_max.append(max_indice)
+                    true_min.append(min_indice)
+        max_ = np.array(true_max)
+        min_ = np.array(true_min)
 
-    if max_.__len__() == 1 and min_.__len__() == 0 :
-        return Line_Type.One_Peak
-    elif min_.__len__() == 1 and max_.__len__() == 0 :
+    print(max_, max_.__len__())
+    print(min_, min_.__len__())
+
+    if min_.__len__() == 1 and max_.__len__() == 0 :
         return Line_Type.One_Valley
-    elif all(is_monotonic_results) :
+    elif is_monotonic_results.count(1)==(len(is_monotonic_results)-is_monotonic_results.count(4)):
         # if oscillation, 0 1 2 atleast exists one, so if true , no 0, also no 2, Decend
+        return Line_Type.One_Valley
+    elif  min_.__len__() == 0 and max_.__len__() == 0 :
+
         return Line_Type.Decend
-    elif not all(is_monotonic_results) and is_monotonic_results.count(2)==0 and is_monotonic_results.count(3) == 0:
-        return Line_Type.Ascend
+    # elif is_monotonic_results.count(0)==(len(is_monotonic_results)-is_monotonic_results.count(4)):
+    #     return Line_Type.Ascend
     else:
         if max_.__len__() == 1 and min_.__len__() == 1  and (max_[0] > min_[0]):
             return Line_Type.Single_Minimum_And_Subsequent_Decay
-        elif max_.__len__() > 1 and min_.__len__() > 1 :
+        elif (max_.__len__() > 1 ) and (min_.__len__() > 1 ):
             return Line_Type.Oscillation
         else:
             return 0
