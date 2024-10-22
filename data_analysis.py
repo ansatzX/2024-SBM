@@ -18,8 +18,8 @@ from scipy.optimize import curve_fit
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
 # import pywt
-atol =1e-5
-rtol =1e-5
+atol =1e-4
+rtol =1e-3
 def num_monotonic(p0: float, p1: float, p2: float) -> int :
     """
     filed 3
@@ -35,13 +35,13 @@ def num_monotonic(p0: float, p1: float, p2: float) -> int :
 
     sorted_ascend: List[float] = sorted([p0, p1, p2])
 
-    if np.allclose(sorted_ascend[0], p2, atol=atol, rtol=rtol) and not np.allclose(sorted_ascend[2], p0, atol=atol, rtol=rtol):
+    if sorted_ascend[0] == p2:
         return 3
-    elif np.allclose(sorted_ascend[2], p2, atol=atol, rtol=rtol) and not np.allclose(sorted_ascend[0], p0, atol=atol, rtol=rtol):
+    elif sorted_ascend[2] == p2:
         return 2
-    elif np.allclose(sorted_ascend[0], p0, atol=atol, rtol=rtol) and np.allclose(sorted_ascend[2], p2, atol=atol, rtol=rtol):
+    elif sorted_ascend[0] == p0 and sorted_ascend[2] == p2:
         return 0
-    elif np.allclose(sorted_ascend[0], p2, atol=atol, rtol=rtol) and np.allclose(sorted_ascend[2], p0, atol=atol, rtol=rtol):
+    elif sorted_ascend[0] == p2 and sorted_ascend[2] == p0:
         return 1
     
 def line_monotonic_detect(data: List[float]) -> List[int]:
@@ -57,20 +57,23 @@ def line_monotonic_detect(data: List[float]) -> List[int]:
     else: # can not be same
         is_monotonic_results = [1]
     # tol =1e-4
-    for id in range(1, len(data)-1):
-        result: int = num_monotonic(data[id-1], data[id], data[id+1])
-        if np.allclose(data[id+1], data[id-1], atol=atol, rtol=rtol):
+    windows_length = 7
+    for id in range(windows_length, len(data)-windows_length, windows_length):
+        result: int = num_monotonic(data[id-windows_length], data[id], data[id+windows_length])
+        if np.allclose(data[id+windows_length], data[id-windows_length], atol=atol, rtol=rtol):
             is_monotonic_results.append(4)
         else:
             is_monotonic_results.append(result)
 
      
-    if not np.allclose(data[len(data)-1], data[len(data)-2], atol=atol, rtol=rtol):
-        if data[len(data)-2] < data[len(data)-1]:
-            is_monotonic_results.append(0)
-        else:
-            is_monotonic_results.append(1)
-    else:
+    # if not np.allclose(data[len(data)-1], data[len(data)-2], atol=atol, rtol=rtol):
+    #     if data[len(data)-2] < data[len(data)-1]:
+    #         is_monotonic_results.append(0)
+    #     else:
+    #         is_monotonic_results.append(1)
+    # else:
+    #     is_monotonic_results.append(4)
+    for i in range(windows_length):
         is_monotonic_results.append(4)
 
     return is_monotonic_results
@@ -83,7 +86,7 @@ class Line_Type(Enum):
     Decend=1.2
     # complicated
     Oscillation=2
-    Single_Minimum_And_Subsequent_Decay = 2.0
+    Single_Minimum_And_Subsequent_Decay = 2.1
     # Oscillation_SamePeriod=2.1
     # Oscillation_PartSamePeriod=2.2
     # Oscillation_NoPeriod=2.3
@@ -144,8 +147,7 @@ def line_classify(data: np.ndarray) -> int:
         max_ = np.array(true_max)
         min_ = np.array(true_min)
 
-    print(max_, max_.__len__())
-    print(min_, min_.__len__())
+
 
     if min_.__len__() == 1 and max_.__len__() == 0 :
         return Line_Type.One_Valley
@@ -158,6 +160,8 @@ def line_classify(data: np.ndarray) -> int:
     # elif is_monotonic_results.count(0)==(len(is_monotonic_results)-is_monotonic_results.count(4)):
     #     return Line_Type.Ascend
     else:
+        # print(max_, max_.__len__())
+        # print(min_, min_.__len__())
         if max_.__len__() == 1 and min_.__len__() == 1  and (max_[0] > min_[0]):
             return Line_Type.Single_Minimum_And_Subsequent_Decay
         elif (max_.__len__() > 1 ) and (min_.__len__() > 1 ):
