@@ -18,8 +18,7 @@ from scipy.optimize import curve_fit
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
 # import pywt
-atol =1e-4
-rtol =1e-3
+
 def num_monotonic(p0: float, p1: float, p2: float) -> int :
     """
     filed 3
@@ -52,15 +51,17 @@ def line_monotonic_detect(data: List[float]) -> List[int]:
     3: non monotonic valley
     4: no change 
     '''
+    atol =1e-4
+    rtol =0
     if data[0] < data[1]:
         is_monotonic_results = [0]
     else: # can not be same
         is_monotonic_results = [1]
     # tol =1e-4
-    windows_length = 7
+    windows_length = 1
     for id in range(windows_length, len(data)-windows_length, windows_length):
         result: int = num_monotonic(data[id-windows_length], data[id], data[id+windows_length])
-        if np.allclose(data[id+windows_length], data[id-windows_length], atol=atol, rtol=rtol):
+        if np.allclose(data[id + windows_length], data[id - windows_length], atol=atol, rtol=rtol):
             is_monotonic_results.append(4)
         else:
             is_monotonic_results.append(result)
@@ -128,11 +129,15 @@ def line_classify(data: np.ndarray) -> int:
 
     # max_, _ = scipy.signal.find_peaks(data)
     # min_, _ = scipy.signal.find_peaks(-data)
+
+
     max_ = scipy.signal.argrelmax(data)[0]
     min_ = scipy.signal.argrelmin(data)[0]
     # find true max min 
     # tol = 1e-4
     if min_.__len__() > 0 and max_.__len__() > 0 :
+        atol =1e-4
+        rtol =1e-4
         true_max = []
         true_min = []
         for i_max in range(len(max_)):
@@ -160,13 +165,42 @@ def line_classify(data: np.ndarray) -> int:
     # elif is_monotonic_results.count(0)==(len(is_monotonic_results)-is_monotonic_results.count(4)):
     #     return Line_Type.Ascend
     else:
-        # print(max_, max_.__len__())
-        # print(min_, min_.__len__())
+        refined_data = []
+        for i_data in range(len(is_monotonic_results)):
+            monotonic_res = is_monotonic_results[i_data]
+            if monotonic_res != 4:
+                refined_data.append(data[i_data])    
+        data = np.array(refined_data)
+        max_ = scipy.signal.argrelmax(data)[0]
+        min_ = scipy.signal.argrelmin(data)[0]
+
+        # if min_.__len__() > 0 and max_.__len__() > 0 :
+        #     atol =1e-4
+        #     rtol =1e-4
+        #     true_max = []
+        #     true_min = []
+        #     for i_max in range(len(max_)):
+        #         if i_max < len(min_):
+        #             max_indice = max_[i_max]
+        #             min_indice = min_[i_max]
+        #             dat_max = data[max_indice]
+        #             dat_min = data[min_indice]
+        #             if not np.allclose(dat_max, dat_min, atol=atol, rtol=rtol):
+        #                 true_max.append(max_indice)
+        #                 true_min.append(min_indice)
+        #     max_ = np.array(true_max)
+        #     min_ = np.array(true_min)
+
         if max_.__len__() == 1 and min_.__len__() == 1  and (max_[0] > min_[0]):
             return Line_Type.Single_Minimum_And_Subsequent_Decay
-        elif (max_.__len__() > 1 ) and (min_.__len__() > 1 ):
+        elif (max_.__len__() >= 1 ) and (min_.__len__() > 1 ):
             return Line_Type.Oscillation
+        elif min_.__len__() == 1 and max_.__len__() == 0 :
+            return Line_Type.One_Valley
+        elif  min_.__len__() == 0 and max_.__len__() == 0 :
+            return Line_Type.Decend
         else:
+            print(max_.__len__(), min_.__len__())
             return 0
         
 def read_line(prefix_folder, line_dict) -> np.ndarray:
@@ -572,12 +606,12 @@ def func_gentor(param_a, param_b, param_c, d=None):
         return signal_func2
 
 
-def wavelet_denoising(signal):
+def wavelet_denoising(signal, cutoff_index=4):
     wavelet_name ='db4'
 
     # signal = get_data_of_vodf(s=0.7, alpha=0.40, nmodes=1000, rho_type=0, idof=204, nsteps = 100)
-    coeffs = pywt.wavedec(signal, wavelet_name, level=3)
-    cutoff_index = 4
+    coeffs = pywt.wavedec(signal, wavelet_name, level=4)
+    # cutoff_index = 4
     coeff_denoising = [coeffs[i] for i in range(0, cutoff_index)] + [ np.zeros_like(coeffs[i]) for i in range(cutoff_index, len(coeffs)) ]
 
 
