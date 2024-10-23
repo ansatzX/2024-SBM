@@ -1,0 +1,14 @@
+# code used in my project
+
+## description of files used in project
+
+- data_analysis.py :
+
+- traj_run.py : worker to proceed calcations
+
+- phase_diagram.ipynb : plot phase_diagram by tree tensor data
+
+- t_Srho.ipynb: plot t verse S*rho by tree tensor 
+
+- t_Srho-Irho.ipynb: plot t verse S*rho by tree tensor to prove S shares same trend with I
+
