@@ -707,7 +707,7 @@ def average_T(time_data, dt_indexs):
         index1 = dt_indexs[i]
         T = time_data[index1] - time_data[index0]
         Ts.append(T)
-    return np.mean(Ts)
+    return np.mean(Ts), Ts
 
 
 def get_signal_freq(mother_folder, data_dict, s, alpha, nmodes, rho_type, nsteps, imode, dof_name=dof_name_gentor_S, dt=0.1, plot=False):
@@ -723,7 +723,7 @@ def get_signal_freq(mother_folder, data_dict, s, alpha, nmodes, rho_type, nsteps
     if plot:
         plt.plot(y_deno, label=dof_name(imode))
         plt.legend(loc=2, bbox_to_anchor=(1.0, 1.0))
-    freq = 1/ average_T(x_uniform, dt_indexs)
+    freq = 1/ average_T(x_uniform, dt_indexs)[0]
     iw = modes_eff.index(dof_name(imode))
     w = omgeas_eff[iw]
     return w, freq
@@ -735,7 +735,7 @@ def average_Amp(signal, dt_indexs_max, dt_indexs_min):
         index_min = dt_indexs_min[i]
         Amp = np.abs((signal[index_max] - signal[index_min]))/2
         Amps.append(Amp)
-    return np.mean(Amp)
+    return np.mean(Amp), Amps
 
 def get_signal_amp(mother_folder, data_dict, s, alpha, nmodes, rho_type, nsteps, imode, dof_name=dof_name_gentor_S, dt=0.1, plot=False):
     
@@ -752,10 +752,10 @@ def get_signal_amp(mother_folder, data_dict, s, alpha, nmodes, rho_type, nsteps,
     if plot:
         plt.plot(y_deno, label=dof_name(imode))
         plt.legend(loc=2, bbox_to_anchor=(1.0, 1.0))
-    amp = average_Amp(y_deno, dt_indexs_0, dt_indexs_1)
+    amp, amps = average_Amp(y_deno, dt_indexs_0, dt_indexs_1)
     iw = modes_eff.index(dof_name(imode))
     w = omgeas_eff[iw]
-    return w, amp
+    return w, amp, amps
 
 def get_true_peaks_ft(xf, yf, N):# -> tuple[Any, list]:
     
@@ -847,7 +847,7 @@ def get_min_timestamp(mother_folder, data_dict,\
         x_uniform, y_uniform = interp_dat(np.linspace(0, nsteps*dt, nsteps), signal, nsteps*10)
         clean_signal = wavelet_denoising(y_uniform)
         min_indexs = scipy.signal.argrelmin(clean_signal)[0]
-        track_points = min_indexs * dt / 10
+        track_points = min_indexs * dt / 10 + dt # + dt since step 0 is time dt 
         timpstamps_of_query_dofs[dof_name(idof)] =  track_points
     return timpstamps_of_query_dofs
 
@@ -866,6 +866,55 @@ def get_near_zero_timestamp(mother_folder, data_dict,\
         near_zero_res = np.isclose(clean_signal, np.zeros(clean_signal.shape), rtol=0, atol=1e-2,
                                            equal_nan=True)
         near_zero_indexs = np.where(near_zero_res == True)[0]
-        track_points = near_zero_indexs * dt / 10
+        track_points = near_zero_indexs * dt / 10 + dt # + dt since step 0 is time dt 
         timpstamps_of_query_dofs[dof_name(idof)] =  track_points
     return timpstamps_of_query_dofs
+
+
+def freq_func(x, a, b):
+    y = a * x + b 
+    return y
+
+def amp_func(x, a, b, c):
+    y = a * np.exp(b* x) + c
+    return y
+
+def fit_freq_singnal(input_dats):
+    
+    # preset 
+    a = 0.4 
+    b = -0.1
+
+    y_true = np.array([ _[1] for _ in input_dats ])
+    x = np.array([ _[0] for _ in input_dats ])
+
+    def freq_loss(params):
+        a, b= params
+        y_pred = freq_func(x, a, b)
+        return np.linalg.norm(y_pred - y_true)
+    
+    params = scipy.optimize.minimize(freq_loss, [a, b])
+    a = params.x[0]
+    b = params.x[1]
+
+    return (a, b)
+
+def fit_amp_singnal(input_dats):
+    
+    # preset 
+    a = 0.4 
+    b = -0.1
+    c= 0
+    y_true = np.array([ _[1] for _ in input_dats ])
+    x = np.array([ _[0] for _ in input_dats ])
+    def amp_loss(params):
+        a, b, c= params
+        y_pred = amp_func(x, a, b, c)
+        return np.linalg.norm(y_pred - y_true)
+    params = scipy.optimize.minimize(amp_loss, [a, b, c])
+
+    a = params.x[0]
+    b = params.x[1]
+    c = params.x[2]
+
+    return (a, b, c)

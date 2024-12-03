@@ -59,7 +59,7 @@ def check_onestep(timestamps, current_time, future_time, dt=0.1, dynamic_num=10)
 
     static_steps = []
     token_dict = {}
-    dynamic_steps = {}
+    dynamic_steps: Dict[int, float] = {}
     dynamic_step_legnth = dt/dynamic_num
     rtol = 0
     atol= dt / dynamic_num
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     Delta = Omega * 0.5
     eps = 0
     if is_calc_dynamic_steps :
-        timestamps = read_query_config(rdm_query_config_file)
+        timestamps = read_query_config(rdm_query_config_file) # same as evolve part 
         logger.info('calc dynamic steps')
         logger.info(timestamps)
 
@@ -293,7 +293,8 @@ if __name__ == '__main__':
     calc_flag = False
     is_static_evolve = False
 
-    # step 0 is not init state of dynamic
+    # step 0 is not init state of dynamic 
+    # step n -- time (n+1)*dt 
     for i in range(nsteps):
         logger.info(f'proceeding step {i}')
         dump_file = os.path.join(dump_dir, f'{job_name}_{i}_step_ttns.npz')
@@ -354,13 +355,13 @@ if __name__ == '__main__':
 
         # dynamic step
         if is_calc_dynamic_steps :
-            current_time = i * dt
+            current_time = (i+1) * dt
             future_time = current_time + dt
             dynamic_steps, static_step_dofs = check_onestep(timestamps, current_time, future_time, dt=dt, dynamic_num=dynamic_nsteps)
 
             if len(dynamic_steps) != 0 :
                 ttns_dynamic = deepcopy(ttns)
-                logger.info(f'wokring on dynamic step {i}')
+                logger.info(f'working on dynamic step {i}')
                 # do not sim by time 
                 # less than dt just evolve from current time
                 dynamic_rdm_lst = []
@@ -370,8 +371,8 @@ if __name__ == '__main__':
                     dofs = dynamic_steps[key]
                     # time_array = token_dict[key]
                     dynamic_istep = key
-                    time = current_time + i * dt * 0.1
-                    evolve_time = i * dt * 0.1
+                    time = current_time + key * dt/dynamic_nsteps # dynamic time
+                    evolve_time = key * dt/dynamic_nsteps
                     dynamic_ttns = ttns.evolve(ttno, evolve_time)
                     if isinstance(dofs[0], str):
                         rdm_dof_dict = static_ttns.calc_1dof_rdm(dofs)
