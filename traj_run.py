@@ -59,7 +59,7 @@ def check_onestep(timestamps, current_time, future_time, dt=0.1, dynamic_num=10)
 
     static_steps = []
     token_dict = {}
-    dynamic_steps: Dict[int, float] = {}
+    dynamic_steps: Dict[int, list] = {}
     dynamic_step_legnth = dt/dynamic_num
     rtol = 0
     atol= dt / dynamic_num
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     parser.add_argument("--restart", default=0, help="0: n, 1: y", type=int)
     parser.add_argument("--restart_mother_folder", default='.', help="indicate where calc files located", type=str)
     parser.add_argument("--calc_dynamic_steps", default='0', help="whether preform dynamic steps between static steps ", type=int)
-    parser.add_argument("--dynamic_nsteps", default='1', help="how many dynamic steps between static steps ", type=int)
+    parser.add_argument("--dynamic_nsteps", default='10', help="how many dynamic steps between static steps ", type=int)
     parser.add_argument("--rdm_query_config_file", default='default_config.pickle', help="config file of dynamic steps: rdm ", type=str)
 
 
@@ -373,11 +373,11 @@ if __name__ == '__main__':
                     dynamic_istep = key
                     time = current_time + key * dt/dynamic_nsteps # dynamic time
                     evolve_time = key * dt/dynamic_nsteps
-                    dynamic_ttns = ttns.evolve(ttno, evolve_time)
+                    dynamic_ttns = ttns_dynamic.evolve(ttno, evolve_time)
                     if isinstance(dofs[0], str):
-                        rdm_dof_dict = static_ttns.calc_1dof_rdm(dofs)
+                        rdm_dof_dict = dynamic_ttns.calc_1dof_rdm(dofs)
                     elif isinstance(dofs[0], tuple):
-                        rdm_dof_dict = static_ttns.calc_2dof_rdm(dofs)
+                        rdm_dof_dict = dynamic_ttns.calc_2dof_rdm(dofs)
                     dynamic_rdm_lst.append((time, rdm_dof_dict))
                     # for i_time in range(len(time_array)):
                     #     time = time_array[i_time]

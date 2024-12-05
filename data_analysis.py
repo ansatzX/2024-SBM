@@ -203,15 +203,25 @@ def line_classify(data: np.ndarray) -> int:
             print(max_.__len__(), min_.__len__())
             return 0
         
-def read_line(prefix_folder, line_dict) -> np.ndarray:
-    infos_ = []
-    for key in sorted(list(line_dict.keys())):
-        step_pickle = line_dict[key]
-        
-        with open(os.path.join(prefix_folder, step_pickle), 'rb') as f:
-            infos = pickle.load(f)
+def read_line(prefix_folder, line_dict, jit_name='zxm') -> np.ndarray:
+
+    jit_file = f'jit_{jit_name}.pickle'
+    if os.path.exists(os.path.join(prefix_folder, jit_file)):
+        with open(os.path.join(prefix_folder, jit_file), 'rb') as f:
+            jit_lst = pickle.load(f)
             # vn_entropy_1site/ mutual infos
-        infos_.append(infos)
+        infos_ = jit_lst
+    else:
+        infos_ = []
+        for key in sorted(list(line_dict.keys())):
+            step_pickle = line_dict[key]
+
+            with open(os.path.join(prefix_folder, step_pickle), 'rb') as f:
+                infos = pickle.load(f)
+                # vn_entropy_1site/ mutual infos
+            infos_.append(infos)
+        with open(os.path.join(prefix_folder, jit_file), 'wb') as f:
+            pickle.dump(infos_, f)
     return infos_
 
 
@@ -222,14 +232,14 @@ def read_omega(prefix_folder) -> np.ndarray:
         # vn_entropy_1site
         return omegas
     else:
-        rho_type = 0 if 'rho_type' not in os.path.basename(prefix_folder) else int(os.path.basename(prefix_folder).split('rho_type_')[1])
+        # rho_type = 0 if 'rho_type' not in os.path.basename(prefix_folder) else int(os.path.basename(prefix_folder).split('rho_type_')[1])
+        s, alpha, Omega, omega_c, nmodes, bond_dims, td_method, rho_type = read_job_parameter(prefix_folder)
+        # s = float(os.path.basename(prefix_folder).split('_')[1][1:])
+        # alpha = float(os.path.basename(prefix_folder).split('_')[2][5:])
 
-        s = float(os.path.basename(prefix_folder).split('_')[1][1:])
-        alpha = float(os.path.basename(prefix_folder).split('_')[2][5:])
-
-        Omega = int(os.path.basename(prefix_folder).split('_')[3][5:])
-        omega_c = int(os.path.basename(prefix_folder).split('_')[5][1:])
-        nmodes = int(os.path.basename(prefix_folder).split('_nmodes')[1].split('_')[0])
+        # Omega = int(os.path.basename(prefix_folder).split('_')[3][5:])
+        # omega_c = int(os.path.basename(prefix_folder).split('_')[5][1:])
+        # nmodes = int(os.path.basename(prefix_folder).split('_nmodes')[1].split('_')[0])
         # this tranlslate since 10.1103/PhysRevLett.129.120406
         s_reno, alpha_reno, omega_c_reno = translate_param(s, alpha, omega_c, Omega)
         sdf = rho_ohmic(alpha_reno, omega_c_reno, s_reno, rho_type)
@@ -324,7 +334,7 @@ def draw_t_S(prefix_folder, dat_dict, key, query_mode: int, nstep=100, dt=0.1):
     """
     s, alpha, Omega, omega_c, nmodes, bond_dims, td_method, rho_type = read_job_parameter(prefix_folder)
 
-    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key, nstep=nstep)
+    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key, nsteps=nstep)
 
     if f'v_{query_mode}' not in modes_eff:
         returntuple = ( 0, 0, 0, 0, 0, 0)
@@ -391,12 +401,103 @@ def show_result_t_S(mother_folder, data_dict, s, alpha, Omega=1, omega_c=10, nmo
             fft_amps.append(fft_amp)
     return imodes, ws, freqs, amps, xfs, fft_amps, key
 
-def draw_t_I(prefix_folder, dat_dict, key, query_mode: int, nstep=100, dt=0.1):
+def draw_t_Z(prefix_folder, dat_dict, key, query_mode: int, nstep=100, dt=0.1):
     """
     --input--
     prefix_folder: output folder of traj_run
     dat_key: dict from function read_line
     key: key for specified line/traj
+    query_mode: the dof to draw
+
+    --output--
+    w: omega of query_mode
+    zero_crossing_pos
+    """
+    s, alpha, Omega, omega_c, nmodes, bond_dims, td_method, rho_type = read_job_parameter(prefix_folder)
+
+    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key, nsteps=nstep)
+
+    if f'v_{query_mode}' not in modes_eff:
+        returntuple = ( 0, 0, 0)
+        return returntuple
+    
+    # S_ = {}
+    # for i_mode in range(omgeas_eff.shape[0]):
+    #     w = omgeas_eff[i_mode]
+    #     if w < Omega * omega_c:
+    #         S_[i_mode] = [dat[i_mode] for dat in dats ]
+    w = omgeas_eff[modes_eff.index(f'v_{query_mode}')]
+    if w > Omega * omega_c:
+        returntuple = ( 0, 0, 0)
+        return returntuple
+    
+    # query_index = np.where(omgeas_eff == query_mode)[0][0]
+    S = [dat[modes_eff.index(f'v_{query_mode}')] for dat in dats ]
+
+    # interp_number = nstep * 3
+
+    # sum_time = dt * nstep
+    zero_crossing_pos, zero_crossing_signal = zero_crossing_denoising(S)
+    zero_crossing_time = [ _*dt for _ in zero_crossing_pos ]
+
+    # x_uniform, singnal_niform = interp_dat(np.linspace(0, sum_time, nstep), S, interp_number)
+    plt.plot(zero_crossing_time, zero_crossing_signal,'-', label=f'query_mode: Z {query_mode}, w:{w}')
+    plt.title(f't-Z*rho: {key} {rho_type}')
+    # plt.ylim(0, max(zero_crossing_signal)*1.1) 
+    # do not set ylim here, since we may plot more figure with same x range and different y range repectively
+    plt.xlabel(f't')
+    plt.xlim(0, zero_crossing_time[-1]*1.1)
+    plt.ylabel(f'Z')
+    plt.legend(loc=2, bbox_to_anchor=(1.0, 1.0))
+
+    # xf, yf = do_cft(x_uniform, singnal_niform, interp_number)
+    # fft_amp = 2.0/interp_number * np.abs(yf)
+    # freq, amplitude, phase = fft_analysis(xf, yf, interp_number, plot=False)
+
+    # returntuple = (w, freq, amplitude, phase, xf, fft_amp)
+    returntuple = (w, zero_crossing_time, zero_crossing_signal)
+    return returntuple
+
+def show_result_t_Z(mother_folder, data_dict, s, alpha, Omega=1, omega_c=10, nmodes=1000, bond_dims=20, td_method=0, rho_type=0, step_length=1, query_modes=None, nstep=100, dt=0.1):# -> tuple[list, list, list]:
+    imodes = []
+    ws = []
+    zero_crossing_signals = []
+    zero_crossing_poss = []
+    freqs = []
+    amps = []
+    xfs = []
+    fft_amps = []
+
+    job_name = f"traj_s{s:.2f}_alpha{alpha:.2f}_Omega{Omega}_omega_c{omega_c}_nmodes{nmodes}_bond_dims{bond_dims}_td_method_{td_method}_rho_type_{rho_type}"  ####################
+    pf = os.path.join(mother_folder, job_name)
+
+    # key = f's{s:.02f}-alpha{alpha:.02f}'
+    key = job_name
+    if query_modes is not None:
+        draw_lst = query_modes
+    else:
+        draw_lst = range(0, nmodes, step_length)
+    for i in draw_lst:
+        query_mode = i
+        w, zero_crossing_pos, zero_crossing_signal = draw_t_Z(pf, data_dict, key, query_mode, nstep, dt)
+        if w != 0 :
+            imodes.append(query_mode)
+            ws.append(w)
+            zero_crossing_poss.append(zero_crossing_pos)
+            zero_crossing_signals.append(zero_crossing_signal)
+            # freqs.append(freq)
+            # amps.append(amplitude)
+            # xfs.append(xf)
+            # fft_amps.append(fft_amp)
+
+    return imodes, ws, zero_crossing_poss, zero_crossing_signals, key
+
+def draw_t_I(prefix_folder, dat_dict, key, query_mode: int, nstep=100, dt=0.1):
+    """
+    --input--
+    prefix_folder: output folder of traj_run
+    dat_key: dict from function read_line
+    key: key for specified line/traj :actual alas of pf
     query_mode: the dof to draw
 
     --output--
@@ -407,7 +508,7 @@ def draw_t_I(prefix_folder, dat_dict, key, query_mode: int, nstep=100, dt=0.1):
     """
     s, alpha, Omega, omega_c, nmodes, bond_dims, td_method, rho_type = read_job_parameter(prefix_folder)
 
-    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key, dof_name=dof_name_gentor_I, nstep=nstep)
+    omgeas_eff, rho_array_eff, modes_eff, dats = chunk_data(prefix_folder, dat_dict, key, dof_name=dof_name_gentor_I, nsteps=nstep)
 
     if dof_name_gentor_I(query_mode) not in modes_eff:
         returntuple = ( 0, 0, 0, 0, 0, 0)
@@ -477,28 +578,41 @@ def dof_name_gentor_S(index) -> str:
 def dof_name_gentor_I(index) -> Tuple[Literal['spin'], str]:
     return ('spin', f'v_{index}')
 
-def chunk_data(prefix_folder, dat_dict, key, dof_name=dof_name_gentor_S, nstep=100):
+def chunk_data(prefix_folder, dat_dict, key, dof_name=dof_name_gentor_S, nsteps=100):
 
     s, alpha, Omega, omega_c, nmodes, bond_dims, td_method, rho_type = read_job_parameter(prefix_folder)
 
 
     s_reno, alpha_reno, omega_c_reno = translate_param(s, alpha, omega_c, Omega)
 
-    info_ = read_line(prefix_folder, dat_dict[key])
-    omgeas = read_omega(prefix_folder)
+    jit_name = f'line_Sxrho_nsteps{nsteps}' if isinstance(dof_name('jit'), str) else f'line_Ixrho_nsteps{nsteps}'
+    jit_file = f'jit_{jit_name}.pickle'
+    if os.path.exists(os.path.join(prefix_folder, jit_file)):
+        with open(os.path.join(prefix_folder, jit_file), 'rb') as f:
+            jit_ = pickle.load(f)
+        omgeas_eff, rho_array_eff, modes_eff, dats = jit_[0], jit_[1], jit_[2], jit_[3]
+    else:
+
+        jit_name = f"line_S_nsteps{nsteps}" if isinstance(dof_name('jit'), str) else f'line_I_nsteps{nsteps}'
+
+        info_ = read_line(prefix_folder, dat_dict[key], jit_name)
+        omgeas = read_omega(prefix_folder)
 
 
-    rho_array = get_rho_array(alpha_reno, s_reno, omega_c_reno, nmodes, rho_type)
-    modes_eff = [ dof_name(i) for i in range(nmodes) if dof_name(i) in info_[0].keys() ]
-    omgeas_eff: ndarray[Any, dtype[Any]] = np.array([ omgeas[i] for i in range(nmodes) if dof_name(i) in info_[0].keys() ] )
-    rho_array_eff: ndarray[Any, dtype[Any]] = np.array([ rho_array[i] for i in range(nmodes) if dof_name(i) in info_[0].keys() ] )
+        rho_array = get_rho_array(alpha_reno, s_reno, omega_c_reno, nmodes, rho_type)
+        modes_eff = [ dof_name(i) for i in range(nmodes) if dof_name(i) in info_[0].keys() ]
+        omgeas_eff: ndarray[Any, dtype[Any]] = np.array([ omgeas[i] for i in range(nmodes) if dof_name(i) in info_[0].keys() ] )
+        rho_array_eff: ndarray[Any, dtype[Any]] = np.array([ rho_array[i] for i in range(nmodes) if dof_name(i) in info_[0].keys() ] )
+    
 
-    dats = []
-    for i_step in range(nstep):
-        # of specific mode i
-        dat = [ info_[i_step][dof_name(i)] for i in range(nmodes) if dof_name(i) in info_[0].keys() ] 
-
-        dats.append(dat*rho_array_eff)
+        dats = []
+        for i_step in range(nsteps):
+            # of specific mode i
+            dat = [ info_[i_step][dof_name(i)] for i in range(nmodes) if dof_name(i) in info_[0].keys() ] 
+    
+            dats.append(dat*rho_array_eff)
+        with open(os.path.join(prefix_folder, jit_file), 'wb') as f:
+            pickle.dump((omgeas_eff, rho_array_eff, modes_eff, dats), f)
     return omgeas_eff, rho_array_eff, modes_eff, dats
 
 
@@ -622,8 +736,26 @@ def wavelet_denoising(signal, cutoff_index=4):
     # plt.legend() 
     return reconstructed_signal
 
+def zero_crossing_denoising(signal):
+        
+    clean_signal = wavelet_denoising(signal)
+    min_indexs = scipy.signal.argrelmin(clean_signal)[0]
+    max_indexs = scipy.signal.argrelmax(clean_signal)[0]
+    zero_crossing_signal = []
+    zero_crossing_pos = []
+    for i in range(min([len(min_indexs), len(max_indexs)])):
+        max_index = max_indexs[i]
+        min_index = min_indexs[i]
 
+        max_signal = signal[max_index]
+        min_signal = signal[min_index]
 
+        zero_crossing_value = (max_signal+min_signal)/2
+        zero_crossing_location = (max_index+min_index)/2
+
+        zero_crossing_pos.append(zero_crossing_location)
+        zero_crossing_signal.append(zero_crossing_value)
+    return zero_crossing_pos, zero_crossing_signal
 
 def show_fft_res(imodes, key, xfs, fft_amps, query_mode=None):
     plt.title(f'{key}')
@@ -851,6 +983,21 @@ def get_min_timestamp(mother_folder, data_dict,\
         timpstamps_of_query_dofs[dof_name(idof)] =  track_points
     return timpstamps_of_query_dofs
 
+def get_max_timestamp(mother_folder, data_dict,\
+                          s, alpha, draw_ids, nmodes=1000, rho_type=0, nsteps=100, dt=0.1, dof_name=dof_name_gentor_S):
+    # min
+    timpstamps_of_query_dofs = {}
+    for idof in draw_ids:
+        omgeas_eff, modes_eff, signal= get_data_of_dof(mother_folder=mother_folder, data_dict=data_dict,\
+                          s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, nsteps=nsteps, dof_name=dof_name,
+                          idof=idof)
+        x_uniform, y_uniform = interp_dat(np.linspace(0, nsteps*dt, nsteps), signal, nsteps*10)
+        clean_signal = wavelet_denoising(y_uniform)
+        max_indexs = scipy.signal.argrelmax(clean_signal)[0]
+        track_points = max_indexs * dt / 10 + dt # + dt since step 0 is time dt 
+        timpstamps_of_query_dofs[dof_name(idof)] =  track_points
+    return timpstamps_of_query_dofs
+
 def get_near_zero_timestamp(mother_folder, data_dict,\
                           s, alpha, draw_ids, nmodes=1000, rho_type=0, nsteps=100, dt=0.1, dof_name=dof_name_gentor_S):
     # min
@@ -870,6 +1017,20 @@ def get_near_zero_timestamp(mother_folder, data_dict,\
         timpstamps_of_query_dofs[dof_name(idof)] =  track_points
     return timpstamps_of_query_dofs
 
+def get_extrema_timestamp(mother_folder, data_dict,\
+                          s, alpha, draw_ids, nmodes=1000, rho_type=0, nsteps=100, dt=0.1, dof_name=dof_name_gentor_S):
+    
+    timpstamps_of_query_dofs = {}
+    for idof in draw_ids:
+        omgeas_eff, modes_eff, signal= get_data_of_dof(mother_folder=mother_folder, data_dict=data_dict,\
+                          s=s, alpha=alpha, nmodes=nmodes, rho_type=rho_type, nsteps=nsteps, dof_name=dof_name,
+                          idof=idof)
+        x_uniform, y_uniform = interp_dat(np.linspace(0, nsteps*dt, nsteps), signal, nsteps*10)
+        clean_signal = wavelet_denoising(y_uniform)
+        extrema_indexs = scipy.signal.argrelextrema(clean_signal)[0]
+        track_points = extrema_indexs * dt / 10 + dt # + dt since step 0 is time dt 
+        timpstamps_of_query_dofs[dof_name(idof)] =  track_points
+    return timpstamps_of_query_dofs, 
 
 def freq_func(x, a, b):
     y = a * x + b 
