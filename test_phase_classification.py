@@ -49,8 +49,15 @@ def generate_test_data(n_points: int = 100) -> dict:
     for i in range(2 * n_points // 3, n_points):
         s = np.random.uniform(0.6, 0.95)
         alpha = np.random.uniform(0.15, 0.5)
-        # 生成单谷数据
-        trajectory = 0.5 + 0.3 * np.exp(-0.05 * np.arange(100)) * np.sin(0.3 * np.arange(100))
+        # 生成只有一个谷的轨迹
+        t = np.arange(100)
+        # 创建一个先下降到最小值，然后逐渐上升并趋于平稳的轨迹
+        valley_time = np.random.uniform(20, 40)  # 谷的位置
+        trajectory = np.where(t < valley_time,
+                             0.6 - 0.01 * t,
+                             0.4 + 0.003 * (t - valley_time))
+        # 添加少量噪声
+        trajectory += np.random.normal(0, 0.005, 100)
         data[(s, alpha)] = trajectory
 
     return data
@@ -85,7 +92,6 @@ def test_phase_classification():
     fig = plot_phase_diagram(results,
                            title="SBM 相图 (测试数据)",
                            save_path="test_phase_diagram.png")
-    plt.show()
 
 
 if __name__ == "__main__":
