@@ -7,8 +7,7 @@ from typing import Dict, Tuple, Optional
 # Dynamics type constants (same as in dynamics_classifier)
 DYNAMICS_COHERENT = "coherent"
 DYNAMICS_INCOHERENT = "incoherent"
-DYNAMICS_PSEUDO_COHERENT = "pseudo_coherent"
-DYNAMICS_OSCILLATION = "oscillation"
+DYNAMICS_PSEUDO_COHERENT = "pseudo-coherent"
 
 
 def plot_phase_diagram(classification_results: Dict[Tuple[float, float], str],
@@ -35,11 +34,11 @@ def plot_phase_diagram(classification_results: Dict[Tuple[float, float], str],
     pseudo_coherent_points = []
 
     for (s, alpha), dynamics_type in classification_results.items():
-        if dynamics_type in [DYNAMICS_COHERENT, DYNAMICS_OSCILLATION]:
+        if dynamics_type == DYNAMICS_COHERENT:
             coherent_points.append((s, alpha))
         elif dynamics_type == DYNAMICS_INCOHERENT:
             incoherent_points.append((s, alpha))
-        else:  # Pseudo-coherent or one_valley
+        else:  # Pseudo-coherent
             pseudo_coherent_points.append((s, alpha))
 
     # Plot points

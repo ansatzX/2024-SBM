@@ -1,24 +1,24 @@
-"""Dynamics classification for spin population (procedural style)"""
+"""Dynamics classification for spin population (procedural style)
+
+Strictly three phase types as defined by user:
+- Coherent: Damped oscillation (multiple peaks and valleys)
+- Incoherent: Monotonic decay (all descending)
+- Pseudo-coherent: Single valley then localization
+"""
 
 import numpy as np
 import scipy
 from scipy import signal
 from typing import List, Tuple
 
-# Dynamics type constants
+# Dynamics type constants (STRICTLY ONLY THESE THREE)
 DYNAMICS_COHERENT = "coherent"
 DYNAMICS_INCOHERENT = "incoherent"
-DYNAMICS_PSEUDO_COHERENT = "pseudo_coherent"
-DYNAMICS_ONE_PEAK = "one_peak"
-DYNAMICS_ONE_VALLEY = "one_valley"
-DYNAMICS_OSCILLATION = "oscillation"
-DYNAMICS_ASCEND = "ascend"
-DYNAMICS_DESCEND = "descend"
-DYNAMICS_UNKNOWN = "unknown"
+DYNAMICS_PSEUDO_COHERENT = "pseudo-coherent"
 
 
-def detect_monotonic_segments(data: List[float], atol: float = 1e-4,
-                             rtol: float = 0) -> List[int]:
+def detect_monotonic_segments(data: List[float], atol: float = 5e-3,
+                             rtol: float = 5e-2) -> List[int]:
     """
     Detect monotonic behavior in time series.
 
@@ -65,16 +65,15 @@ def detect_monotonic_segments(data: List[float], atol: float = 1e-4,
     return segments
 
 
-def classify_dynamics(data: np.ndarray, atol: float = 1e-4,
-                     rtol: float = 1e-4) -> str:
+def classify_dynamics(data: np.ndarray, atol: float = 5e-3,
+                     rtol: float = 5e-2) -> str:
     """
     Classify dynamics type based on spin population time series.
 
-    Classification scheme:
+    Classification scheme (STRICTLY ONLY THESE THREE):
     - Coherent: Damped oscillation (multiple peaks and valleys)
     - Incoherent: Monotonic decay (all descending)
     - Pseudo-coherent: Single valley then localization
-    - Oscillation: Sustained oscillations
 
     Args:
         data: Time series of spin population
@@ -114,20 +113,16 @@ def classify_dynamics(data: np.ndarray, atol: float = 1e-4,
     n_max = len(max_indices)
     n_min = len(min_indices)
 
-    # Check for single (pseudo-coherent or incoherent)
-    if n_min == 1 and n_max == 0:
-        return DYNAMICS_ONE_VALLEY
-
-    # Check for pure descend (incoherent)
+    # Check for pure descend (incoherent) - STRICT classification
     n_descend = segments.count(1)
     n_total = len(segments) - segments.count(4)  # Exclude no-change segments
 
     if n_descend == n_total and n_total > 0:
-        return DYNAMICS_DESCEND
+        return DYNAMICS_INCOHERENT
 
     # No extrema (monotonic descent)
     if n_min == 0 and n_max == 0:
-        return DYNAMICS_DESCEND
+        return DYNAMICS_INCOHERENT
 
     # Filter out constant segments for further analysis
     refined_data = []
@@ -136,7 +131,7 @@ def classify_dynamics(data: np.ndarray, atol: float = 1e-4,
             refined_data.append(data[i])
 
     if len(refined_data) < 3:
-        return DYNAMICS_UNKNOWN
+        return DYNAMICS_INCOHERENT  # Default to incoherent if data is too short
 
     refined_data = np.array(refined_data)
     max_indices_refined = signal.argrelmax(refined_data)[0]
@@ -150,23 +145,20 @@ def classify_dynamics(data: np.ndarray, atol: float = 1e-4,
         if max_indices_refined[0] > min_indices_refined[0]:
             return DYNAMICS_PSEUDO_COHERENT
 
-    # Multiple extrema (oscillation/coherent)
+    # Multiple extrema (oscillation/coherent) - STRICT: require multiple peaks and valleys
     if n_max_refined >= 1 and n_min_refined > 1:
-        return DYNAMICS_OSCILLATION
+        return DYNAMICS_COHERENT
 
-    # Single valley
+    # Single valley (pseudo-coherent)
     if n_min_refined == 1 and n_max_refined == 0:
-        return DYNAMICS_ONE_VALLEY
+        return DYNAMICS_PSEUDO_COHERENT
 
-    # Default to monotonic descent
-    if n_min_refined == 0 and n_max_refined == 0:
-        return DYNAMICS_DESCEND
-
-    return DYNAMICS_UNKNOWN
+    # Default to incoherent if no clear classification
+    return DYNAMICS_INCOHERENT
 
 
-def classify_phase_region(data_dict: dict, atol: float = 1e-4,
-                         rtol: float = 1e-4) -> Tuple[dict, list]:
+def classify_phase_region(data_dict: dict, atol: float = 5e-3,
+                         rtol: float = 5e-2) -> Tuple[dict, list]:
     """
     Classify dynamics for multiple trajectories.
 
@@ -184,11 +176,11 @@ def classify_phase_region(data_dict: dict, atol: float = 1e-4,
     unclassified = []
 
     for key, trajectory in data_dict.items():
-        dynamics_type = classify_dynamics(np.array(trajectory), atol, rtol)
+        s, alpha = key
+        if alpha < 0.1:
+            continue  #舍去 alpha 小于0.1的数据
 
-        if dynamics_type != DYNAMICS_UNKNOWN:
-            results[key] = dynamics_type
-        else:
-            unclassified.append(key)
+        dynamics_type = classify_dynamics(np.array(trajectory), atol, rtol)
+        results[key] = dynamics_type
 
     return results, unclassified
