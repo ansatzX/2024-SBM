@@ -30,9 +30,20 @@ def load_pickle(filepath: Union[str, Path]) -> Any:
 
     Returns:
         Loaded data
+
+    Raises:
+        FileNotFoundError: If file not found
+        Exception: If any other error occurs
     """
-    with open(filepath, 'rb') as f:
-        return pickle.load(f)
+    filepath = Path(filepath)
+
+    try:
+        with open(filepath, 'rb') as f:
+            return pickle.load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"文件未找到: {filepath}")
+    except Exception as e:
+        raise Exception(f"加载 pickle 文件时出错: {filepath} - {e}")
 
 
 def save_array(data: np.ndarray, filepath: Union[str, Path], compressed: bool = True) -> None:

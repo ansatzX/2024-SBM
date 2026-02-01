@@ -174,4 +174,5 @@ linux*
 
 *.make
 
-*.sh
+# 相区分类器相关文件
+!phase_classifier_summary.md
